@@ -1,0 +1,107 @@
+import {
+  Controller,
+  Get,
+  Post,
+  Patch,
+  Body,
+  Param,
+  Query,
+  UseGuards,
+  Req,
+} from '@nestjs/common';
+import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
+import { SamplesService } from './samples.service';
+import {
+  CreateSampleDto,
+  UpdateSampleStatusDto,
+  SampleFilterDto,
+} from './dto/sample.dto';
+import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { RolesGuard } from '../auth/guards/roles.guard';
+import { Roles } from '../auth/decorators/roles.decorator';
+import { UserRole, SampleStatus } from '../../database/enums';
+
+@ApiTags('Samples')
+@Controller('samples')
+@UseGuards(JwtAuthGuard, RolesGuard)
+@ApiBearerAuth()
+export class SamplesController {
+  constructor(private readonly samplesService: SamplesService) {}
+
+  @Post()
+  @Roles(UserRole.COLLECTOR, UserRole.ADMIN)
+  @ApiOperation({ summary: 'Register a new sample' })
+  async create(@Body() dto: CreateSampleDto, @Req() req) {
+    return this.samplesService.create(dto, req.user.sub);
+  }
+
+  @Get()
+  @Roles(UserRole.COLLECTOR, UserRole.DISPATCHER, UserRole.HUB_OFFICER, UserRole.LAB_OFFICER, UserRole.ADMIN)
+  @ApiOperation({ summary: 'Get all samples with filters' })
+  async findAll(@Query() filters: SampleFilterDto) {
+    return this.samplesService.findAll(filters);
+  }
+
+  @Get('stats')
+  @Roles(UserRole.ADMIN, UserRole.HUB_OFFICER, UserRole.LAB_OFFICER)
+  @ApiOperation({ summary: 'Get sample statistics' })
+  async getStats() {
+    return this.samplesService.getStats();
+  }
+
+  @Get('district-stats')
+  @Roles(UserRole.ADMIN)
+  @ApiOperation({ summary: 'Get district-level statistics' })
+  async getDistrictStats() {
+    return this.samplesService.getDistrictStats();
+  }
+
+  @Get('scan/:sampleId')
+  @Roles(UserRole.DISPATCHER, UserRole.HUB_OFFICER, UserRole.LAB_OFFICER, UserRole.ADMIN)
+  @ApiOperation({ summary: 'Scan sample by sampleId (QR code)' })
+  async scan(@Param('sampleId') sampleId: string) {
+    return this.samplesService.findBySampleId(sampleId);
+  }
+
+  @Get(':id')
+  @Roles(UserRole.COLLECTOR, UserRole.DISPATCHER, UserRole.HUB_OFFICER, UserRole.LAB_OFFICER, UserRole.ADMIN)
+  @ApiOperation({ summary: 'Get sample by ID' })
+  async findById(@Param('id') id: string) {
+    return this.samplesService.findById(id);
+  }
+
+  @Get(':id/timeline')
+  @Roles(UserRole.COLLECTOR, UserRole.DISPATCHER, UserRole.HUB_OFFICER, UserRole.LAB_OFFICER, UserRole.ADMIN)
+  @ApiOperation({ summary: 'Get sample timeline/event log' })
+  async getTimeline(@Param('id') id: string) {
+    const sample = await this.samplesService.findById(id);
+    return this.samplesService.getTimeline(sample.sampleId);
+  }
+
+  @Patch(':id/status')
+  @Roles(UserRole.DISPATCHER, UserRole.HUB_OFFICER, UserRole.LAB_OFFICER, UserRole.ADMIN)
+  @ApiOperation({ summary: 'Update sample status' })
+  async updateStatus(
+    @Param('id') id: string,
+    @Body() dto: UpdateSampleStatusDto,
+    @Req() req,
+  ) {
+    return this.samplesService.updateStatus(
+      id,
+      dto,
+      req.user.sub,
+      req.user.facilityId,
+    );
+  }
+
+  @Patch(':id/lost')
+  @Roles(UserRole.DISPATCHER, UserRole.HUB_OFFICER, UserRole.LAB_OFFICER, UserRole.ADMIN)
+  @ApiOperation({ summary: 'Mark sample as lost' })
+  async markLost(
+    @Param('id') id: string,
+    @Body('notes') notes: string,
+    @Req() req,
+  ) {
+    return this.samplesService.markLost(id, req.user.sub, notes);
+  }
+}
