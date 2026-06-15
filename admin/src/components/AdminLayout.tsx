@@ -21,13 +21,16 @@ import {
   Menu,
   X,
   CloudOff,
+  HelpCircle,
 } from 'lucide-react'
 import { useAuth } from '../lib/auth'
 import { useTheme } from '../lib/theme'
 import { useRbac } from '../lib/rbac'
 import { useOnline } from '../lib/useOnline'
+import { useOnboarding } from '../lib/useOnboarding'
 import { cn, roleMeta } from '../lib/ui'
 import { NotificationsBell } from './NotificationsBell'
+import { OnboardingWizard } from './OnboardingWizard'
 
 interface NavItem {
   to: string
@@ -82,6 +85,7 @@ export default function AdminLayout() {
   const { theme, toggle } = useTheme()
   const { can } = useRbac()
   const online = useOnline()
+  const onboarding = useOnboarding()
   const [open, setOpen] = useState(false)
   const location = useLocation()
   const navigate = useNavigate()
@@ -166,6 +170,17 @@ export default function AdminLayout() {
       </nav>
 
       <div className="border-t p-4 dark:border-ink-700">
+        <button
+          onClick={() => {
+            onboarding.open()
+            setOpen(false)
+          }}
+          title="How it works — replay the quick tour"
+          className="mb-3 flex w-full items-center gap-3 rounded-xl px-3.5 py-2.5 text-sm font-medium text-slate-500 transition hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-ink-800"
+        >
+          <HelpCircle size={18} />
+          Help / How it works
+        </button>
         <div className="flex items-center gap-3">
           <div
             className="grid h-9 w-9 place-items-center rounded-full text-sm font-bold text-white"
@@ -260,6 +275,8 @@ export default function AdminLayout() {
           </div>
         </main>
       </div>
+
+      {onboarding.show && <OnboardingWizard onClose={onboarding.close} />}
     </div>
   )
 }
