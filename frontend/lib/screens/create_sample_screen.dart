@@ -17,8 +17,21 @@ class _CreateSampleScreenState extends State<CreateSampleScreen> {
   final _villageController = TextEditingController();
   final _ageController = TextEditingController();
   final _notesController = TextEditingController();
+  final _newBatchController = TextEditingController();
   String _gender = 'Unknown';
   String _facilityId = '';
+  // '' = single sample (no batch), a batch id = add to it, '__new__' = make one.
+  String _batchChoice = '';
+  List<Map<String, dynamic>> _batches = [];
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      final list = await context.read<SampleProvider>().fetchBatches();
+      if (mounted) setState(() => _batches = list);
+    });
+  }
 
   @override
   void dispose() {
@@ -28,6 +41,7 @@ class _CreateSampleScreenState extends State<CreateSampleScreen> {
     _villageController.dispose();
     _ageController.dispose();
     _notesController.dispose();
+    _newBatchController.dispose();
     super.dispose();
   }
 
@@ -35,6 +49,27 @@ class _CreateSampleScreenState extends State<CreateSampleScreen> {
     if (!_formKey.currentState!.validate()) return;
 
     final provider = context.read<SampleProvider>();
+
+    // Resolve the batch (if any). "__new__" creates an empty batch first; the
+    // sample is then collected into it (its count starts at 1, server-side).
+    String? batchId;
+    if (_batchChoice == '__new__') {
+      batchId = await provider.createBatch(
+        facilityId: _facilityId.isNotEmpty ? _facilityId : null,
+        notes: _newBatchController.text,
+      );
+      if (batchId == null) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Could not create the batch'), backgroundColor: Colors.red),
+          );
+        }
+        return;
+      }
+    } else if (_batchChoice.isNotEmpty) {
+      batchId = _batchChoice;
+    }
+
     final success = await provider.createSample({
       'sampleType': _sampleTypeController.text.trim(),
       'diseaseProgram': _diseaseProgramController.text.trim(),
@@ -44,6 +79,7 @@ class _CreateSampleScreenState extends State<CreateSampleScreen> {
       'patientAge': _ageController.text.trim().isEmpty ? null : int.tryParse(_ageController.text.trim()),
       'patientGender': _gender,
       'notes': _notesController.text.trim().isEmpty ? null : _notesController.text.trim(),
+      if (batchId != null) 'batchId': batchId,
     });
 
     if (success && mounted) {
@@ -151,6 +187,47 @@ class _CreateSampleScreenState extends State<CreateSampleScreen> {
                   border: OutlineInputBorder(),
                 ),
               ),
+              const SizedBox(height: 16),
+              DropdownButtonFormField<String>(
+                value: _batchChoice,
+                isExpanded: true,
+                decoration: const InputDecoration(
+                  labelText: 'Batch / box (optional)',
+                  prefixIcon: Icon(Icons.inventory),
+                  border: OutlineInputBorder(),
+                ),
+                items: [
+                  const DropdownMenuItem(value: '', child: Text('No batch — single sample')),
+                  ..._batches.map((b) => DropdownMenuItem(
+                        value: b['id'] as String,
+                        child: Text(
+                          '${b['batchId']} · ${b['sampleCount'] ?? 0} sample(s)',
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      )),
+                  const DropdownMenuItem(value: '__new__', child: Text('+ Create a new batch')),
+                ],
+                onChanged: (v) => setState(() => _batchChoice = v ?? ''),
+              ),
+              if (_batchChoice == '__new__') ...[
+                const SizedBox(height: 16),
+                TextFormField(
+                  controller: _newBatchController,
+                  decoration: const InputDecoration(
+                    labelText: 'New batch label (optional)',
+                    hintText: 'e.g. Morning collection run',
+                    prefixIcon: Icon(Icons.label_outline),
+                    border: OutlineInputBorder(),
+                  ),
+                ),
+                const Padding(
+                  padding: EdgeInsets.only(top: 6, left: 4),
+                  child: Text(
+                    'A new box QR is generated and this sample is added to it.',
+                    style: TextStyle(fontSize: 12, color: Colors.grey),
+                  ),
+                ),
+              ],
               const SizedBox(height: 32),
               FilledButton(
                 onPressed: provider.isLoading ? null : _submit,

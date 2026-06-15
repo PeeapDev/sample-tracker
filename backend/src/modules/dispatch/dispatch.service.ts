@@ -19,6 +19,11 @@ import { NotificationsService } from '../notifications/notifications.service';
 
 @Injectable()
 export class DispatchService {
+  // Upper bound on rows a list endpoint will return in one call, so the worst
+  // case stays sane as the table grows. The admin UI filters/searches the
+  // returned set client-side; revisit with true pagination if data outgrows it.
+  private static readonly LIST_CAP = 500;
+
   constructor(
     @InjectRepository(Dispatch)
     private dispatchRepository: Repository<Dispatch>,
@@ -70,17 +75,52 @@ export class DispatchService {
   }
 
   async findAll(filters: DispatchFilterDto): Promise<{ data: Dispatch[]; total: number }> {
-    const where: any = {};
-    if (filters.status) where.status = filters.status;
-    if (filters.riderId) where.riderId = filters.riderId;
-    if (filters.originFacilityId) where.originFacilityId = filters.originFacilityId;
-    if (filters.destinationFacilityId) where.destinationFacilityId = filters.destinationFacilityId;
+    // A QueryBuilder bypasses the entities' eager ManyToOne relations (rider →
+    // user.facility, origin/destination facilities) that a plain `find` would
+    // auto-expand into a multi-table join, and lets us select only the columns
+    // the list renders. A take() cap bounds the worst case as data grows.
+    const qb = this.dispatchRepository
+      .createQueryBuilder('dispatch')
+      .leftJoin('dispatch.rider', 'rider')
+      .leftJoin('dispatch.originFacility', 'originFacility')
+      .leftJoin('dispatch.destinationFacility', 'destinationFacility')
+      .select([
+        'dispatch.id',
+        'dispatch.dispatchId',
+        'dispatch.status',
+        'dispatch.riderId',
+        'dispatch.originFacilityId',
+        'dispatch.destinationFacilityId',
+        'dispatch.sampleCount',
+        'dispatch.coolerId',
+        'dispatch.pickupTime',
+        'dispatch.deliveryTime',
+        'dispatch.estimatedDeliveryTime',
+        'dispatch.notes',
+        'dispatch.createdAt',
+        'dispatch.updatedAt',
+        'rider.id',
+        'rider.firstName',
+        'rider.lastName',
+        'originFacility.id',
+        'originFacility.name',
+        'originFacility.district',
+        'destinationFacility.id',
+        'destinationFacility.name',
+        'destinationFacility.district',
+      ]);
 
-    const [data, total] = await this.dispatchRepository.findAndCount({
-      where,
-      relations: ['rider', 'originFacility', 'destinationFacility'],
-      order: { createdAt: 'DESC' },
-    });
+    if (filters.status) qb.andWhere('dispatch.status = :status', { status: filters.status });
+    if (filters.riderId) qb.andWhere('dispatch.riderId = :riderId', { riderId: filters.riderId });
+    if (filters.originFacilityId)
+      qb.andWhere('dispatch.originFacilityId = :ofId', { ofId: filters.originFacilityId });
+    if (filters.destinationFacilityId)
+      qb.andWhere('dispatch.destinationFacilityId = :dfId', { dfId: filters.destinationFacilityId });
+
+    const [data, total] = await qb
+      .orderBy('dispatch.createdAt', 'DESC')
+      .take(DispatchService.LIST_CAP)
+      .getManyAndCount();
 
     return { data, total };
   }
@@ -139,10 +179,28 @@ export class DispatchService {
   }
 
   async getDispatchSamples(id: string): Promise<Sample[]> {
-    return this.sampleRepository.find({
-      where: { dispatchId: id },
-      relations: ['facility'],
-    });
+    // Lean select: skip the base64 `qrCode` blob and the eager relation cascade
+    // a plain `find` would pull for every sample in the dispatch.
+    return this.sampleRepository
+      .createQueryBuilder('sample')
+      .leftJoin('sample.facility', 'facility')
+      .select([
+        'sample.id',
+        'sample.sampleId',
+        'sample.sampleType',
+        'sample.status',
+        'sample.diseaseProgram',
+        'sample.quantity',
+        'sample.village',
+        'sample.collectedAt',
+        'sample.createdAt',
+        'facility.id',
+        'facility.name',
+        'facility.district',
+      ])
+      .where('sample.dispatchId = :id', { id })
+      .orderBy('sample.createdAt', 'DESC')
+      .getMany();
   }
 
   async getRiderStats(): Promise<any[]> {

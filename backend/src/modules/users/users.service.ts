@@ -11,15 +11,45 @@ import { CreateUserDto, UpdateUserDto } from './dto/user.dto';
 
 @Injectable()
 export class UsersService {
+  // Columns safe to expose in list responses. Deliberately omits `password`
+  // (already select:false), `pin`, and `refreshToken` — a plain `find` returns
+  // pin and refreshToken, leaking credentials. Using an explicit select via a
+  // QueryBuilder also bypasses the eager facility relation cascade.
+  private static readonly SAFE_COLUMNS = [
+    'user.id',
+    'user.email',
+    'user.phone',
+    'user.firstName',
+    'user.lastName',
+    'user.role',
+    'user.facilityId',
+    'user.isActive',
+    'user.isVerified',
+    'user.createdAt',
+    'user.updatedAt',
+    'facility.id',
+    'facility.name',
+    'facility.district',
+  ];
+  private static readonly LIST_CAP = 500;
+
   constructor(
     @InjectRepository(User)
     private userRepository: Repository<User>,
   ) {}
 
+  private safeQuery() {
+    return this.userRepository
+      .createQueryBuilder('user')
+      .leftJoin('user.facility', 'facility')
+      .select(UsersService.SAFE_COLUMNS);
+  }
+
   async findAll(): Promise<User[]> {
-    return this.userRepository.find({
-      relations: ['facility'],
-    });
+    return this.safeQuery()
+      .orderBy('user.createdAt', 'DESC')
+      .take(UsersService.LIST_CAP)
+      .getMany();
   }
 
   async findById(id: string): Promise<User> {
@@ -41,10 +71,12 @@ export class UsersService {
   }
 
   async findByRole(role: string): Promise<User[]> {
-    return this.userRepository.find({
-      where: { role: role as any, isActive: true },
-      relations: ['facility'],
-    });
+    return this.safeQuery()
+      .where('user.role = :role', { role })
+      .andWhere('user.isActive = true')
+      .orderBy('user.createdAt', 'DESC')
+      .take(UsersService.LIST_CAP)
+      .getMany();
   }
 
   async create(dto: CreateUserDto): Promise<User> {

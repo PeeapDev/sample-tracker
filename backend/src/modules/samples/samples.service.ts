@@ -2,20 +2,46 @@ import {
   Injectable,
   NotFoundException,
   BadRequestException,
+  ForbiddenException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, Between, Like, In } from 'typeorm';
+import { Repository, In, SelectQueryBuilder } from 'typeorm';
 import { v4 as uuidv4 } from 'uuid';
 import * as QRCode from 'qrcode';
 import { Sample } from '../../database/entities/sample.entity';
 import { EventLog } from '../../database/entities/event-log.entity';
-import { SampleStatus, NotificationType } from '../../database/enums';
+import { Batch } from '../../database/entities/batch.entity';
+import { SampleStatus, UserRole, NotificationType } from '../../database/enums';
 import {
   CreateSampleDto,
   UpdateSampleStatusDto,
+  ScanSampleDto,
   SampleFilterDto,
 } from './dto/sample.dto';
 import { NotificationsService } from '../notifications/notifications.service';
+
+interface ScanActor {
+  sub: string;
+  role: UserRole;
+  facilityId?: string;
+}
+
+interface GpsCoords {
+  latitude?: number;
+  longitude?: number;
+}
+
+// The scan-driven state machine: for each current status, which role's scan
+// advances it, and to what next status. Collection is excluded — that's the one
+// manual step. ADMIN may perform any scan. Terminal states have no entry.
+const SCAN_FLOW: Partial<Record<SampleStatus, { role: UserRole; next: SampleStatus }>> = {
+  [SampleStatus.COLLECTED]: { role: UserRole.DISPATCHER, next: SampleStatus.PICKED_UP },
+  [SampleStatus.PICKED_UP]: { role: UserRole.HUB_OFFICER, next: SampleStatus.HUB_RECEIVED },
+  [SampleStatus.HUB_RECEIVED]: { role: UserRole.DISPATCHER, next: SampleStatus.IN_TRANSIT },
+  [SampleStatus.IN_TRANSIT]: { role: UserRole.LAB_OFFICER, next: SampleStatus.LAB_RECEIVED },
+  [SampleStatus.LAB_RECEIVED]: { role: UserRole.LAB_OFFICER, next: SampleStatus.ANALYSIS_QUEUE },
+  [SampleStatus.ANALYSIS_QUEUE]: { role: UserRole.LAB_OFFICER, next: SampleStatus.COMPLETED },
+};
 
 @Injectable()
 export class SamplesService {
@@ -43,6 +69,17 @@ export class SamplesService {
 
     const saved = await this.sampleRepository.save(sample);
 
+    // If collected straight into a batch, keep that batch's running count in
+    // sync. increment() is a no-op if the batchId doesn't match any batch.
+    if (saved.batchId) {
+      await this.sampleRepository.manager.increment(
+        Batch,
+        { id: saved.batchId },
+        'sampleCount',
+        1,
+      );
+    }
+
     await this.logEvent(saved.id, SampleStatus.COLLECTED, userId, dto.facilityId, {
       sampleType: dto.sampleType,
       diseaseProgram: dto.diseaseProgram,
@@ -59,30 +96,94 @@ export class SamplesService {
     return saved;
   }
 
-  async findAll(filters: SampleFilterDto): Promise<{ data: Sample[]; total: number }> {
-    const where: any = {};
+  // Columns the list view actually renders. Crucially this omits `qrCode` — a
+  // base64-encoded PNG data-URI stored per row — which the table never shows
+  // (only the detail modal does, and it fetches the sample by id separately).
+  // Returning it for every row, on top of the entities' eager ManyToOne
+  // relations, made `findAll` pull a multi-table join full of image blobs and
+  // take 30s+ for ~130 rows. A QueryBuilder ignores eager relations, so we join
+  // only the facility name the table needs.
+  private static readonly LIST_COLUMNS = [
+    'sample.id',
+    'sample.sampleId',
+    'sample.sampleType',
+    'sample.status',
+    'sample.diseaseProgram',
+    'sample.quantity',
+    'sample.village',
+    'sample.patientAge',
+    'sample.patientGender',
+    'sample.notes',
+    'sample.collectedById',
+    'sample.facilityId',
+    'sample.dispatcherId',
+    'sample.dispatchId',
+    'sample.batchId',
+    'sample.collectedAt',
+    'sample.pickedUpAt',
+    'sample.hubReceivedAt',
+    'sample.dispatchedAt',
+    'sample.labReceivedAt',
+    'sample.completedAt',
+    'sample.createdAt',
+    'sample.updatedAt',
+    'facility.id',
+    'facility.name',
+    'facility.district',
+  ];
 
-    if (filters.status) {
-      where.status = filters.status;
+  // Hard ceiling on rows returned when the caller doesn't paginate, so a
+  // no-args fetch can't balloon as the table grows.
+  private static readonly LIST_CAP = 500;
+
+  private listQuery() {
+    return this.sampleRepository
+      .createQueryBuilder('sample')
+      .leftJoin('sample.facility', 'facility')
+      .select(SamplesService.LIST_COLUMNS);
+  }
+
+  // Apply ORDER BY + pagination consistently. When page/pageSize are supplied
+  // the result is a single small page (fast over a remote DB); otherwise we
+  // return up to LIST_CAP rows for back-compat with un-paginated callers.
+  private paginate(qb: SelectQueryBuilder<Sample>, filters: SampleFilterDto) {
+    qb.orderBy('sample.createdAt', 'DESC');
+    if (filters.page || filters.pageSize) {
+      const pageSize = Math.min(filters.pageSize ?? 25, 200);
+      const page = filters.page ?? 1;
+      qb.skip((page - 1) * pageSize).take(pageSize);
+    } else {
+      qb.take(SamplesService.LIST_CAP);
     }
-    if (filters.facilityId) {
-      where.facilityId = filters.facilityId;
-    }
-    if (filters.diseaseProgram) {
-      where.diseaseProgram = filters.diseaseProgram;
-    }
-    if (filters.dateFrom && filters.dateTo) {
-      where.collectedAt = Between(new Date(filters.dateFrom), new Date(filters.dateTo));
-    }
+    return qb;
+  }
+
+  async findAll(filters: SampleFilterDto): Promise<{ data: Sample[]; total: number }> {
     if (filters.search) {
       return this.searchSamples(filters.search, filters);
     }
 
-    const [data, total] = await this.sampleRepository.findAndCount({
-      where,
-      relations: ['facility', 'collectedBy', 'dispatcher'],
-      order: { createdAt: 'DESC' },
-    });
+    const qb = this.listQuery();
+
+    if (filters.status) {
+      qb.andWhere('sample.status = :status', { status: filters.status });
+    }
+    if (filters.facilityId) {
+      qb.andWhere('sample.facilityId = :facilityId', { facilityId: filters.facilityId });
+    }
+    if (filters.diseaseProgram) {
+      qb.andWhere('sample.diseaseProgram = :diseaseProgram', {
+        diseaseProgram: filters.diseaseProgram,
+      });
+    }
+    if (filters.dateFrom && filters.dateTo) {
+      qb.andWhere('sample.collectedAt BETWEEN :from AND :to', {
+        from: new Date(filters.dateFrom),
+        to: new Date(filters.dateTo),
+      });
+    }
+
+    const [data, total] = await this.paginate(qb, filters).getManyAndCount();
 
     return { data, total };
   }
@@ -156,6 +257,80 @@ export class SamplesService {
     return this.findById(id);
   }
 
+  /**
+   * Scan-to-advance: the heart of the post-collection flow. The scanner's role
+   * + the sample's current status determine the (single, unambiguous) next
+   * status. One scan = one transition + one GPS-stamped chain-of-custody log.
+   */
+  async scanAdvance(sampleId: string, actor: ScanActor, dto: ScanSampleDto) {
+    const sample = await this.findBySampleId(sampleId);
+    const coords: GpsCoords = { latitude: dto.latitude, longitude: dto.longitude };
+
+    // A loss/damage can be flagged from any active stage.
+    if (dto.action === 'lost') {
+      if (sample.status === SampleStatus.COMPLETED || sample.status === SampleStatus.LOST) {
+        throw new BadRequestException(`Sample ${sampleId} is already ${sample.status}.`);
+      }
+      const lost = await this.markLost(sample.id, actor.sub, dto.notes, actor.facilityId, coords);
+      return {
+        sample: lost,
+        previousStatus: sample.status,
+        newStatus: SampleStatus.LOST,
+        message: `Sample ${sampleId} marked lost.`,
+      };
+    }
+
+    const step = SCAN_FLOW[sample.status];
+    if (!step) {
+      throw new BadRequestException(
+        `Sample ${sampleId} is already ${sample.status} — there is no further scan step.`,
+      );
+    }
+    if (actor.role !== UserRole.ADMIN && actor.role !== step.role) {
+      throw new ForbiddenException(
+        `This scan advances the sample to "${step.next}", which only a ${step.role} can perform.`,
+      );
+    }
+
+    const updateData: any = { status: step.next };
+    switch (step.next) {
+      case SampleStatus.PICKED_UP:
+        updateData.pickedUpAt = new Date();
+        updateData.dispatcherId = actor.sub;
+        break;
+      case SampleStatus.HUB_RECEIVED:
+        updateData.hubReceivedAt = new Date();
+        break;
+      case SampleStatus.IN_TRANSIT:
+        updateData.dispatchedAt = new Date();
+        break;
+      case SampleStatus.LAB_RECEIVED:
+        updateData.labReceivedAt = new Date();
+        break;
+      case SampleStatus.COMPLETED:
+        updateData.completedAt = new Date();
+        break;
+    }
+
+    await this.sampleRepository.update(sample.id, updateData);
+    await this.logEvent(
+      sample.id,
+      step.next,
+      actor.sub,
+      actor.facilityId || sample.facilityId,
+      { notes: dto.notes, previousStatus: sample.status, scanned: true },
+      coords,
+    );
+    await this.sendStatusNotification(sample.sampleId, step.next, sample.id);
+
+    return {
+      sample: await this.findById(sample.id),
+      previousStatus: sample.status,
+      newStatus: step.next,
+      message: `Scanned ${sample.sampleId}: ${sample.status} → ${step.next}.`,
+    };
+  }
+
   async getTimeline(sampleId: string): Promise<EventLog[]> {
     const sample = await this.findBySampleId(sampleId);
     return this.eventLogRepository.find({
@@ -220,10 +395,16 @@ export class SamplesService {
       .getRawMany();
   }
 
-  async markLost(id: string, userId: string, notes?: string): Promise<Sample> {
+  async markLost(
+    id: string,
+    userId: string,
+    notes?: string,
+    facilityId?: string,
+    coords?: GpsCoords,
+  ): Promise<Sample> {
     const sample = await this.findById(id);
     await this.sampleRepository.update(id, { status: SampleStatus.LOST });
-    await this.logEvent(id, SampleStatus.LOST, userId, sample.facilityId, { notes });
+    await this.logEvent(id, SampleStatus.LOST, userId, facilityId || sample.facilityId, { notes }, coords);
     await this.notificationsService.createNotification({
       type: NotificationType.SAMPLE_LOST,
       title: 'Sample Marked Lost',
@@ -269,6 +450,7 @@ export class SamplesService {
     actorId: string,
     facilityId: string,
     metadata?: Record<string, any>,
+    coords?: GpsCoords,
   ): Promise<void> {
     const log = this.eventLogRepository.create({
       sampleId,
@@ -276,6 +458,8 @@ export class SamplesService {
       actorId,
       facilityId,
       metadata,
+      latitude: coords?.latitude,
+      longitude: coords?.longitude,
     });
     await this.eventLogRepository.save(log);
   }
@@ -316,23 +500,16 @@ export class SamplesService {
     search: string,
     filters: SampleFilterDto,
   ): Promise<{ data: Sample[]; total: number }> {
-    const query = this.sampleRepository
-      .createQueryBuilder('sample')
-      .leftJoinAndSelect('sample.facility', 'facility')
-      .leftJoinAndSelect('sample.collectedBy', 'collectedBy')
-      .leftJoinAndSelect('sample.dispatcher', 'dispatcher')
-      .where(
-        'sample.sampleId ILIKE :search OR sample.sampleType ILIKE :search OR sample.diseaseProgram ILIKE :search',
-        { search: `%${search}%` },
-      );
+    const query = this.listQuery().where(
+      '(sample.sampleId ILIKE :search OR sample.sampleType ILIKE :search OR sample.diseaseProgram ILIKE :search OR sample.village ILIKE :search)',
+      { search: `%${search}%` },
+    );
 
     if (filters.status) {
       query.andWhere('sample.status = :status', { status: filters.status });
     }
 
-    const [data, total] = await query
-      .orderBy('sample.createdAt', 'DESC')
-      .getManyAndCount();
+    const [data, total] = await this.paginate(query, filters).getManyAndCount();
 
     return { data, total };
   }

@@ -38,6 +38,17 @@ class _SampleDetailScreenState extends State<SampleDetailScreen> {
       );
     }
 
+    // "Currently at" = facility / GPS of the most recent scan event (timeline is
+    // oldest→newest), falling back to the collection facility.
+    EventLogModel? latestFacilityEvent;
+    EventLogModel? latestGpsEvent;
+    for (final e in samples.timeline) {
+      if (e.facility?['name'] != null) latestFacilityEvent = e;
+      if (e.latitude != null && e.longitude != null) latestGpsEvent = e;
+    }
+    final currentFacility =
+        (latestFacilityEvent?.facility?['name'] ?? sample.facility?['name']) as String?;
+
     return Scaffold(
       appBar: AppBar(
         title: Text(sample.sampleId),
@@ -80,6 +91,45 @@ class _SampleDetailScreenState extends State<SampleDetailScreen> {
                         fontSize: 16,
                       ),
                     ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 16),
+
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Icon(Icons.location_city, color: theme.colorScheme.primary, size: 20),
+                      const SizedBox(width: 8),
+                      Text('Currently At', style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold)),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  Text(
+                    currentFacility ?? 'Unknown location',
+                    style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w600),
+                  ),
+                  const SizedBox(height: 6),
+                  Row(
+                    children: [
+                      Icon(Icons.place, size: 16, color: theme.colorScheme.onSurfaceVariant),
+                      const SizedBox(width: 4),
+                      Expanded(
+                        child: Text(
+                          latestGpsEvent != null
+                              ? 'GPS ${latestGpsEvent.latitude!.toStringAsFixed(4)}, ${latestGpsEvent.longitude!.toStringAsFixed(4)}'
+                              : 'Location not captured yet',
+                          style: theme.textTheme.bodyMedium?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+                        ),
+                      ),
+                    ],
                   ),
                 ],
               ),
@@ -203,6 +253,18 @@ class _SampleDetailScreenState extends State<SampleDetailScreen> {
                   _formatTime(event.timestamp),
                   style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant),
                 ),
+                if (event.facility?['name'] != null || (event.latitude != null && event.longitude != null))
+                  Padding(
+                    padding: const EdgeInsets.only(top: 2),
+                    child: Text(
+                      [
+                        if (event.facility?['name'] != null) event.facility!['name'],
+                        if (event.latitude != null && event.longitude != null)
+                          '📍 ${event.latitude!.toStringAsFixed(4)}, ${event.longitude!.toStringAsFixed(4)}',
+                      ].join('  ·  '),
+                      style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+                    ),
+                  ),
               ],
             ),
           ),

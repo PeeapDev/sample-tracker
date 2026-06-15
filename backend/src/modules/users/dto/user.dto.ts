@@ -6,7 +6,7 @@ import {
   IsOptional,
   IsBoolean,
 } from 'class-validator';
-import { UserRole } from '../../database/enums';
+import { UserRole } from '../../../database/enums';
 
 export class CreateUserDto {
   @IsEmail()

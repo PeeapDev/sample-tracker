@@ -79,6 +79,28 @@ class AuthProvider extends ChangeNotifier {
     }
   }
 
+  void demoLogin(String role) {
+    final names = {
+      'admin': ['System', 'Administrator'],
+      'collector': ['Aminata', 'Kamara'],
+      'dispatcher': ['Mohamed', 'Sesay'],
+      'hub_officer': ['Fatmata', 'Bangura'],
+      'lab_officer': ['Ibrahim', 'Koroma'],
+    };
+    final name = names[role] ?? ['Demo', 'User'];
+    _user = UserModel(
+      id: 'demo-$role',
+      email: '$role@nsrtms.gov.sl',
+      phone: '+232-76-100000',
+      firstName: name[0],
+      lastName: name[1],
+      role: role,
+      facility: {'name': 'Freetown Central Hospital'},
+    );
+    _error = null;
+    notifyListeners();
+  }
+
   Future<void> logout() async {
     try {
       await _api.post('/auth/logout', {});

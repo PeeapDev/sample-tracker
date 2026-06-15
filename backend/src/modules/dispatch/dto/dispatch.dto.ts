@@ -6,7 +6,7 @@ import {
   Min,
   IsArray,
 } from 'class-validator';
-import { DispatchStatus } from '../../database/enums';
+import { DispatchStatus } from '../../../database/enums';
 
 export class CreateDispatchDto {
   @IsString()

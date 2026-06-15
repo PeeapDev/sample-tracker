@@ -1,12 +1,11 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, MoreThan } from 'typeorm';
+import { Repository } from 'typeorm';
 import { Sample } from '../../database/entities/sample.entity';
 import { Dispatch } from '../../database/entities/dispatch.entity';
 import { EventLog } from '../../database/entities/event-log.entity';
 import { User } from '../../database/entities/user.entity';
 import { Facility } from '../../database/entities/facility.entity';
-import { SampleStatus, DispatchStatus } from '../../database/enums';
 
 @Injectable()
 export class DashboardService {
@@ -27,78 +26,54 @@ export class DashboardService {
     const now = new Date();
     const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
     const weekAgo = new Date(today.getTime() - 7 * 24 * 60 * 60 * 1000);
+    const delayCut = new Date(now.getTime() - 48 * 60 * 60 * 1000);
 
-    const [
-      totalSamples,
-      samplesToday,
-      samplesThisWeek,
-      inTransit,
-      delayed,
-      lost,
-      completed,
-    ] = await Promise.all([
-      this.sampleRepository.count(),
-      this.sampleRepository.count({
-        where: { createdAt: MoreThan(today) },
-      }),
-      this.sampleRepository.count({
-        where: { createdAt: MoreThan(weekAgo) },
-      }),
-      this.sampleRepository.count({
-        where: {
-          status: SampleStatus.IN_TRANSIT,
-        },
-      }),
-      this.sampleRepository.count({
-        where: {
-          status: SampleStatus.IN_TRANSIT,
-          dispatchedAt: MoreThan(new Date(now.getTime() - 48 * 60 * 60 * 1000)),
-        },
-      }),
-      this.sampleRepository.count({
-        where: { status: SampleStatus.LOST },
-      }),
-      this.sampleRepository.count({
-        where: { status: SampleStatus.COMPLETED },
-      }),
-    ]);
+    // One pass over the samples table with conditional aggregation, instead of
+    // 7 separate COUNT round-trips to the database.
+    const [row] = await this.sampleRepository.manager.query(
+      `SELECT
+         COUNT(*)::int AS total,
+         COUNT(*) FILTER (WHERE "createdAt" > $1)::int AS today,
+         COUNT(*) FILTER (WHERE "createdAt" > $2)::int AS week,
+         COUNT(*) FILTER (WHERE status = 'in_transit')::int AS in_transit,
+         COUNT(*) FILTER (WHERE status = 'in_transit' AND "dispatchedAt" > $3)::int AS delayed,
+         COUNT(*) FILTER (WHERE status = 'lost')::int AS lost,
+         COUNT(*) FILTER (WHERE status = 'completed')::int AS completed
+       FROM samples`,
+      [today, weekAgo, delayCut],
+    );
 
+    const totalSamples = Number(row.total);
+    const lost = Number(row.lost);
     const lostRate = totalSamples > 0 ? (lost / totalSamples) * 100 : 0;
 
     return {
       totalSamples,
-      samplesToday,
-      samplesThisWeek,
-      inTransit,
-      delayed,
+      samplesToday: Number(row.today),
+      samplesThisWeek: Number(row.week),
+      inTransit: Number(row.in_transit),
+      delayed: Number(row.delayed),
       lost,
-      completed,
+      completed: Number(row.completed),
       lostRate: parseFloat(lostRate.toFixed(2)),
     };
   }
 
   async getManagementMetrics() {
-    const [
-      totalUsers,
-      totalFacilities,
-      activeDispatches,
-      totalDispatches,
-    ] = await Promise.all([
-      this.userRepository.count({ where: { isActive: true } }),
-      this.facilityRepository.count({ where: { isActive: true } }),
-      this.dispatchRepository.count({
-        where: {
-          status: DispatchStatus.IN_TRANSIT,
-        },
-      }),
-      this.dispatchRepository.count(),
-    ]);
+    // Four cross-table counts collapsed into a single query via scalar subqueries.
+    const [row] = await this.userRepository.manager.query(
+      `SELECT
+         (SELECT COUNT(*) FROM users WHERE "isActive" = true)::int AS "totalUsers",
+         (SELECT COUNT(*) FROM facilities WHERE "isActive" = true)::int AS "totalFacilities",
+         (SELECT COUNT(*) FROM dispatches WHERE status = 'in_transit')::int AS "activeDispatches",
+         (SELECT COUNT(*) FROM dispatches)::int AS "totalDispatches"`,
+    );
 
     return {
-      totalUsers,
-      totalFacilities,
-      activeDispatches,
-      totalDispatches,
+      totalUsers: Number(row.totalUsers),
+      totalFacilities: Number(row.totalFacilities),
+      activeDispatches: Number(row.activeDispatches),
+      totalDispatches: Number(row.totalDispatches),
     };
   }
 
@@ -141,11 +116,35 @@ export class DashboardService {
   }
 
   async getRecentActivity(limit: number = 20) {
-    return this.eventLogRepository.find({
-      relations: ['sample', 'actor', 'facility'],
-      order: { timestamp: 'DESC' },
-      take: limit,
-    });
+    // The EventLog/Sample/User/Facility entities all declare eager ManyToOne
+    // relations, so a plain `find({ relations: [...] })` expands into an
+    // ~18-way LEFT JOIN — and because `take` is combined with joins, TypeORM
+    // wraps the whole thing in a `SELECT DISTINCT ... LIMIT` over that join.
+    // Each joined sample row also drags along its base64 `qrCode` PNG blob, so
+    // Postgres has to materialise and de-duplicate a huge intermediate result.
+    // That made this query scale super-linearly with `limit` (≈6s at 10, ≈116s
+    // at 20) against the remote DB.
+    //
+    // A QueryBuilder ignores eager relations, so we join only `sample` and
+    // select the handful of scalar columns the dashboard actually renders.
+    return this.eventLogRepository
+      .createQueryBuilder('event')
+      .leftJoin('event.sample', 'sample')
+      .select([
+        'event.id',
+        'event.event',
+        'event.description',
+        'event.timestamp',
+        'event.metadata',
+        'sample.id',
+        'sample.sampleId',
+        'sample.sampleType',
+        'sample.status',
+        'sample.diseaseProgram',
+      ])
+      .orderBy('event.timestamp', 'DESC')
+      .take(limit)
+      .getMany();
   }
 
   async getFullDashboard() {

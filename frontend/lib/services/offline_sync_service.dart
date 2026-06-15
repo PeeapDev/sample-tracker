@@ -36,6 +36,10 @@ class OfflineSyncService {
     final pending = prefs.getStringList(_pendingKey) ?? [];
     if (pending.isEmpty) return;
 
+    // Pick up whatever account is currently signed in (tokens may have changed
+    // since this service was constructed, e.g. after a re-login).
+    await _api.loadTokens();
+
     final remaining = <String>[];
 
     for (final op in pending) {

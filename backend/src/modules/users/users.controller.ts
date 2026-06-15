@@ -13,19 +13,18 @@ import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { UsersService } from './users.service';
 import { CreateUserDto, UpdateUserDto } from './dto/user.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
-import { RolesGuard } from '../auth/guards/roles.guard';
-import { Roles } from '../auth/decorators/roles.decorator';
-import { UserRole } from '../../database/enums';
+import { PermissionsGuard } from '../permissions/permissions.guard';
+import { RequirePermission } from '../permissions/require-permission.decorator';
 
 @ApiTags('Users')
 @Controller('users')
-@UseGuards(JwtAuthGuard, RolesGuard)
+@UseGuards(JwtAuthGuard, PermissionsGuard)
 @ApiBearerAuth()
 export class UsersController {
   constructor(private readonly usersService: UsersService) {}
 
   @Get()
-  @Roles(UserRole.ADMIN)
+  @RequirePermission('users.view')
   @ApiOperation({ summary: 'Get all users' })
   async findAll(@Query('role') role?: string) {
     if (role) {
@@ -35,28 +34,28 @@ export class UsersController {
   }
 
   @Get(':id')
-  @Roles(UserRole.ADMIN)
+  @RequirePermission('users.view')
   @ApiOperation({ summary: 'Get user by ID' })
   async findById(@Param('id') id: string) {
     return this.usersService.findById(id);
   }
 
   @Post()
-  @Roles(UserRole.ADMIN)
+  @RequirePermission('users.manage')
   @ApiOperation({ summary: 'Create a new user' })
   async create(@Body() dto: CreateUserDto) {
     return this.usersService.create(dto);
   }
 
   @Patch(':id')
-  @Roles(UserRole.ADMIN)
+  @RequirePermission('users.manage')
   @ApiOperation({ summary: 'Update user' })
   async update(@Param('id') id: string, @Body() dto: UpdateUserDto) {
     return this.usersService.update(id, dto);
   }
 
   @Delete(':id')
-  @Roles(UserRole.ADMIN)
+  @RequirePermission('users.manage')
   @ApiOperation({ summary: 'Deactivate user' })
   async deactivate(@Param('id') id: string) {
     await this.usersService.deactivate(id);
@@ -64,7 +63,7 @@ export class UsersController {
   }
 
   @Patch(':id/activate')
-  @Roles(UserRole.ADMIN)
+  @RequirePermission('users.manage')
   @ApiOperation({ summary: 'Activate user' })
   async activate(@Param('id') id: string) {
     await this.usersService.activate(id);

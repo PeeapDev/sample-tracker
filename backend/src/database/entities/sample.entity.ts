@@ -7,6 +7,7 @@ import {
   ManyToOne,
   JoinColumn,
   OneToMany,
+  Index,
 } from 'typeorm';
 import { SampleStatus } from '../enums';
 import { User } from './user.entity';
@@ -24,9 +25,11 @@ export class Sample {
   @Column()
   sampleType: string;
 
+  @Index()
   @Column({ type: 'enum', enum: SampleStatus, default: SampleStatus.COLLECTED })
   status: SampleStatus;
 
+  @Index()
   @Column()
   diseaseProgram: string;
 
@@ -59,6 +62,7 @@ export class Sample {
   @JoinColumn({ name: 'facilityId' })
   facility: Facility;
 
+  @Index()
   @Column({ nullable: true })
   facilityId: string;
 
@@ -69,8 +73,14 @@ export class Sample {
   @Column({ nullable: true })
   dispatcherId: string;
 
+  @Index()
   @Column({ nullable: true })
   dispatchId: string;
+
+  // The package/box this sample is grouped into, if any (see Batch entity).
+  @Index()
+  @Column({ nullable: true })
+  batchId: string;
 
   @Column({ type: 'timestamp', nullable: true })
   collectedAt: Date;
@@ -93,6 +103,7 @@ export class Sample {
   @OneToMany(() => EventLog, (log) => log.sample)
   eventLogs: EventLog[];
 
+  @Index()
   @CreateDateColumn()
   createdAt: Date;
 

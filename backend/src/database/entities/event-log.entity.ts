@@ -5,6 +5,7 @@ import {
   CreateDateColumn,
   ManyToOne,
   JoinColumn,
+  Index,
 } from 'typeorm';
 import { SampleStatus } from '../enums';
 import { Sample } from './sample.entity';
@@ -20,6 +21,7 @@ export class EventLog {
   @JoinColumn({ name: 'sampleId' })
   sample: Sample;
 
+  @Index()
   @Column()
   sampleId: string;
 
@@ -52,6 +54,7 @@ export class EventLog {
   @Column({ type: 'jsonb', nullable: true })
   metadata: Record<string, any>;
 
+  @Index()
   @CreateDateColumn()
   timestamp: Date;
 }

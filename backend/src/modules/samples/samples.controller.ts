@@ -14,6 +14,7 @@ import { SamplesService } from './samples.service';
 import {
   CreateSampleDto,
   UpdateSampleStatusDto,
+  ScanSampleDto,
   SampleFilterDto,
 } from './dto/sample.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
@@ -56,9 +57,18 @@ export class SamplesController {
     return this.samplesService.getDistrictStats();
   }
 
+  @Post('scan')
+  @Roles(UserRole.DISPATCHER, UserRole.HUB_OFFICER, UserRole.LAB_OFFICER, UserRole.ADMIN)
+  @ApiOperation({
+    summary: 'Scan a QR to advance the sample to its next stage (role-aware, GPS-logged)',
+  })
+  async scanAdvance(@Body() dto: ScanSampleDto, @Req() req) {
+    return this.samplesService.scanAdvance(dto.sampleId, req.user, dto);
+  }
+
   @Get('scan/:sampleId')
   @Roles(UserRole.DISPATCHER, UserRole.HUB_OFFICER, UserRole.LAB_OFFICER, UserRole.ADMIN)
-  @ApiOperation({ summary: 'Scan sample by sampleId (QR code)' })
+  @ApiOperation({ summary: 'Look up a sample by sampleId (QR code) without changing it' })
   async scan(@Param('sampleId') sampleId: string) {
     return this.samplesService.findBySampleId(sampleId);
   }

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/auth_provider.dart';
 import '../providers/connectivity_provider.dart';
+import '../providers/theme_provider.dart';
 import 'login_screen.dart';
 
 class ProfileScreen extends StatelessWidget {
@@ -12,6 +13,7 @@ class ProfileScreen extends StatelessWidget {
     final theme = Theme.of(context);
     final auth = context.watch<AuthProvider>();
     final connectivity = context.watch<ConnectivityProvider>();
+    final themeProvider = context.watch<ThemeProvider>();
     final user = auth.user;
 
     return Scaffold(
@@ -80,6 +82,46 @@ class ProfileScreen extends StatelessWidget {
                     subtitle: Text(user!.facility!['name'] ?? ''),
                   ),
               ],
+            ),
+          ),
+          const SizedBox(height: 16),
+
+          // Appearance
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Icon(Icons.palette_outlined,
+                          color: theme.colorScheme.onSurfaceVariant),
+                      const SizedBox(width: 12),
+                      Text('Appearance',
+                          style: theme.textTheme.titleSmall
+                              ?.copyWith(fontWeight: FontWeight.w600)),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  SizedBox(
+                    width: double.infinity,
+                    child: SegmentedButton<ThemeMode>(
+                      segments: const [
+                        ButtonSegment(
+                            value: ThemeMode.system, label: Text('System')),
+                        ButtonSegment(
+                            value: ThemeMode.light, label: Text('Light')),
+                        ButtonSegment(
+                            value: ThemeMode.dark, label: Text('Dark')),
+                      ],
+                      selected: {themeProvider.mode},
+                      onSelectionChanged: (s) => themeProvider.setMode(s.first),
+                      showSelectedIcon: false,
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
           const SizedBox(height: 16),

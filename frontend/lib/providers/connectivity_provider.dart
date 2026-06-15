@@ -6,8 +6,8 @@ class ConnectivityProvider extends ChangeNotifier {
   bool get isOnline => _isOnline;
 
   ConnectivityProvider() {
-    Connectivity().onConnectivityChanged.listen((results) {
-      final online = results.any((r) => r != ConnectivityResult.none);
+    Connectivity().onConnectivityChanged.listen((ConnectivityResult result) {
+      final online = result != ConnectivityResult.none;
       if (online != _isOnline) {
         _isOnline = online;
         notifyListeners();
@@ -16,8 +16,8 @@ class ConnectivityProvider extends ChangeNotifier {
   }
 
   Future<void> checkConnectivity() async {
-    final results = await Connectivity().checkConnectivity();
-    _isOnline = results.any((r) => r != ConnectivityResult.none);
+    final result = await Connectivity().checkConnectivity();
+    _isOnline = result != ConnectivityResult.none;
     notifyListeners();
   }
 }

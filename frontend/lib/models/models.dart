@@ -1,3 +1,5 @@
+import 'package:flutter/material.dart';
+
 class UserModel {
   final String id;
   final String email;
@@ -200,6 +202,8 @@ class EventLogModel {
   final String? description;
   final Map<String, dynamic>? actor;
   final Map<String, dynamic>? facility;
+  final double? latitude;
+  final double? longitude;
   final DateTime timestamp;
 
   EventLogModel({
@@ -208,8 +212,17 @@ class EventLogModel {
     this.description,
     this.actor,
     this.facility,
+    this.latitude,
+    this.longitude,
     required this.timestamp,
   });
+
+  // Postgres returns decimal columns as strings, so accept num or String.
+  static double? _toDouble(dynamic v) {
+    if (v == null) return null;
+    if (v is num) return v.toDouble();
+    return double.tryParse(v.toString());
+  }
 
   factory EventLogModel.fromJson(Map<String, dynamic> json) {
     return EventLogModel(
@@ -218,6 +231,8 @@ class EventLogModel {
       description: json['description'],
       actor: json['actor'],
       facility: json['facility'],
+      latitude: _toDouble(json['latitude']),
+      longitude: _toDouble(json['longitude']),
       timestamp: DateTime.parse(json['timestamp'] ?? DateTime.now().toIso8601String()),
     );
   }

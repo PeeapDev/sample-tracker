@@ -1,3 +1,4 @@
+import 'dotenv/config';
 import { DataSource } from 'typeorm';
 import * as bcrypt from 'bcrypt';
 import { Facility } from '../entities/facility.entity';
@@ -17,7 +18,7 @@ function getDbConfig() {
       username: process.env.SUPABASE_DB_USER || 'postgres',
       password: process.env.SUPABASE_DB_PASSWORD || supabaseKey,
       database: process.env.SUPABASE_DB_NAME || 'postgres',
-      entities: [Facility, User],
+      entities: [__dirname + '/../entities/*.entity{.ts,.js}'],
       synchronize: true,
       ssl: { rejectUnauthorized: false },
     };

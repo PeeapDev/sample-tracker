@@ -7,9 +7,13 @@ import { Dispatch } from '../../database/entities/dispatch.entity';
 import { EventLog } from '../../database/entities/event-log.entity';
 import { User } from '../../database/entities/user.entity';
 import { Facility } from '../../database/entities/facility.entity';
+import { PermissionsModule } from '../permissions/permissions.module';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([Sample, Dispatch, EventLog, User, Facility])],
+  imports: [
+    TypeOrmModule.forFeature([Sample, Dispatch, EventLog, User, Facility]),
+    PermissionsModule,
+  ],
   controllers: [DashboardController],
   providers: [DashboardService],
 })

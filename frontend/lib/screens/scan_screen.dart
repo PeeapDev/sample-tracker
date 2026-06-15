@@ -1,8 +1,13 @@
 import 'package:flutter/material.dart';
+import 'package:geolocator/geolocator.dart';
+import 'package:mobile_scanner/mobile_scanner.dart';
 import 'package:provider/provider.dart';
 import '../providers/sample_provider.dart';
+import '../providers/auth_provider.dart';
 import 'sample_detail_screen.dart';
 
+/// Scan-to-advance screen. A scan (camera or manual) sends the sample to the
+/// role-aware backend, which moves it to its next stage and logs GPS + time.
 class ScanScreen extends StatefulWidget {
   const ScanScreen({super.key});
 
@@ -11,46 +16,245 @@ class ScanScreen extends StatefulWidget {
 }
 
 class _ScanScreenState extends State<ScanScreen> {
-  final _scanController = TextEditingController();
-  bool _isScanning = false;
+  final _manualController = TextEditingController();
+  bool _cameraMode = false;
+  bool _processing = false;
+  String? _lastCode; // de-dupe rapid repeat detections
 
   @override
   void dispose() {
-    _scanController.dispose();
+    _manualController.dispose();
     super.dispose();
   }
 
-  Future<void> _scanSample() async {
-    final code = _scanController.text.trim();
-    if (code.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Enter a sample ID or scan QR code')),
+  /// Best-effort GPS — returns null if unavailable or denied (scan still works).
+  Future<Position?> _currentPosition() async {
+    try {
+      LocationPermission perm = await Geolocator.checkPermission();
+      if (perm == LocationPermission.denied) {
+        perm = await Geolocator.requestPermission();
+      }
+      if (perm == LocationPermission.denied ||
+          perm == LocationPermission.deniedForever) {
+        return null;
+      }
+      return await Geolocator.getCurrentPosition();
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<void> _handleCode(String rawCode) async {
+    final code = rawCode.trim();
+    if (code.isEmpty || _processing) return;
+    setState(() => _processing = true);
+
+    final provider = context.read<SampleProvider>();
+    final pos = await _currentPosition();
+
+    // A BOX- code is a package/batch: advance every sample inside and show the
+    // manifest. Anything else is an individual sample QR.
+    if (code.toUpperCase().startsWith('BOX-')) {
+      final batchResult = await provider.scanBatch(
+        code,
+        latitude: pos?.latitude,
+        longitude: pos?.longitude,
       );
+      if (!mounted) return;
+      setState(() => _processing = false);
+      if (batchResult != null) {
+        _manualController.clear();
+        _showBatchManifest(batchResult);
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(provider.error ?? 'Box scan failed.'),
+            backgroundColor: Colors.red.shade700,
+          ),
+        );
+        _lastCode = null;
+      }
       return;
     }
 
-    setState(() => _isScanning = true);
+    final result = await provider.scanAdvance(
+      code,
+      latitude: pos?.latitude,
+      longitude: pos?.longitude,
+    );
 
-    final provider = context.read<SampleProvider>();
-    final sample = await provider.scanSample(code);
+    if (!mounted) return;
+    setState(() => _processing = false);
 
-    setState(() => _isScanning = false);
-
-    if (sample != null && mounted) {
-      Navigator.push(
-        context,
-        MaterialPageRoute(
-          builder: (_) => SampleDetailScreen(sampleId: sample.id),
-        ),
-      );
-    } else if (mounted) {
+    if (result != null) {
+      _showScanResult(result, pos);
+      _manualController.clear();
+    } else {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Sample not found. Check the ID and try again.'),
-          backgroundColor: Colors.red,
+        SnackBar(
+          content: Text(provider.error ?? 'Scan failed.'),
+          backgroundColor: Colors.red.shade700,
         ),
       );
+      // allow the same code to be retried after an error
+      _lastCode = null;
     }
+  }
+
+  /// After a successful scan, show what changed plus where the sample now is:
+  /// the hospital that just received it (the scanner's facility) and the GPS
+  /// captured at the moment of the scan.
+  void _showScanResult(Map<String, dynamic> result, Position? pos) {
+    final sample = result['sample'] as Map<String, dynamic>?;
+    final sampleId = sample?['id']?.toString();
+    final code = sample?['sampleId']?.toString() ?? '';
+    final newStatus = (result['newStatus']?.toString() ??
+            sample?['status']?.toString() ??
+            '')
+        .replaceAll('_', ' ');
+    final msg = result['message']?.toString() ?? 'Sample advanced.';
+    final hospital = (context.read<AuthProvider>().user?.facility?['name'] ??
+        sample?['facility']?['name']) as String?;
+
+    showDialog(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: Row(
+          children: [
+            Icon(Icons.check_circle, color: Colors.green.shade600),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(code.isEmpty ? 'Scanned' : code,
+                  style: const TextStyle(fontFamily: 'monospace', fontSize: 16)),
+            ),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(msg),
+            const SizedBox(height: 12),
+            _resultRow(Icons.flag, 'Status', newStatus.isEmpty ? '—' : newStatus),
+            _resultRow(Icons.location_city, 'Currently at', hospital ?? 'Unknown'),
+            _resultRow(
+              Icons.place,
+              'Location',
+              pos != null
+                  ? '${pos.latitude.toStringAsFixed(4)}, ${pos.longitude.toStringAsFixed(4)}'
+                  : 'Not available',
+            ),
+          ],
+        ),
+        actions: [
+          if (sampleId != null)
+            TextButton(
+              onPressed: () {
+                Navigator.pop(context);
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => SampleDetailScreen(sampleId: sampleId),
+                  ),
+                );
+              },
+              child: const Text('View details'),
+            ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Done'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _resultRow(IconData icon, String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(icon, size: 16, color: Colors.grey),
+          const SizedBox(width: 8),
+          SizedBox(
+            width: 90,
+            child: Text(label, style: const TextStyle(color: Colors.grey, fontSize: 13)),
+          ),
+          Expanded(
+            child: Text(value, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Shows the box manifest — every sample inside, with the advance summary.
+  void _showBatchManifest(Map<String, dynamic> result) {
+    final batch = result['batch'] as Map<String, dynamic>?;
+    final samples = (batch?['samples'] as List?) ?? const [];
+    final message = result['message']?.toString() ?? '';
+    final skipped = (result['skipped'] as List?) ?? const [];
+
+    showDialog(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: Row(
+          children: [
+            const Icon(Icons.inventory_2_outlined),
+            const SizedBox(width: 8),
+            Expanded(child: Text(result['batchId']?.toString() ?? 'Box')),
+          ],
+        ),
+        content: SizedBox(
+          width: double.maxFinite,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              if (message.isNotEmpty)
+                Text(message,
+                    style: const TextStyle(fontWeight: FontWeight.bold)),
+              if (skipped.isNotEmpty)
+                Padding(
+                  padding: const EdgeInsets.only(top: 4),
+                  child: Text('Skipped ${skipped.length} (not scannable here)',
+                      style: TextStyle(
+                          fontSize: 12, color: Colors.orange.shade700)),
+                ),
+              const Divider(),
+              Flexible(
+                child: ListView.builder(
+                  shrinkWrap: true,
+                  itemCount: samples.length,
+                  itemBuilder: (_, i) {
+                    final s = samples[i] as Map<String, dynamic>;
+                    return ListTile(
+                      dense: true,
+                      contentPadding: EdgeInsets.zero,
+                      title: Text(s['sampleId']?.toString() ?? '',
+                          style: const TextStyle(
+                              fontFamily: 'monospace',
+                              fontWeight: FontWeight.w600)),
+                      subtitle: Text(
+                          '${s['sampleType'] ?? ''} · ${s['diseaseProgram'] ?? ''}'),
+                      trailing: Text(
+                          (s['status']?.toString() ?? '').replaceAll('_', ' ')),
+                    );
+                  },
+                ),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Done'),
+          ),
+        ],
+      ),
+    );
   }
 
   @override
@@ -58,72 +262,146 @@ class _ScanScreenState extends State<ScanScreen> {
     final theme = Theme.of(context);
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Scan Sample')),
-      body: Center(
-        child: Padding(
-          padding: const EdgeInsets.all(32),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Container(
-                width: 160,
-                height: 160,
-                decoration: BoxDecoration(
-                  color: theme.colorScheme.primaryContainer,
-                  borderRadius: BorderRadius.circular(24),
-                ),
-                child: Icon(
-                  Icons.qr_code_scanner,
-                  size: 80,
-                  color: theme.colorScheme.onPrimaryContainer,
-                ),
-              ),
-              const SizedBox(height: 32),
-              Text(
-                'Scan Sample QR Code',
-                style: theme.textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.bold),
-              ),
-              const SizedBox(height: 8),
-              Text(
-                'Scan the QR code on the sample container\nor enter the Sample ID manually',
-                textAlign: TextAlign.center,
-                style: theme.textTheme.bodyMedium?.copyWith(
-                  color: theme.colorScheme.onSurfaceVariant,
-                ),
-              ),
-              const SizedBox(height: 32),
-              TextField(
-                controller: _scanController,
-                decoration: InputDecoration(
-                  labelText: 'Sample ID',
-                  hintText: 'e.g., NSR-ABC123-XY12',
-                  prefixIcon: const Icon(Icons.qr_code),
-                  border: const OutlineInputBorder(),
-                  suffixIcon: IconButton(
-                    icon: const Icon(Icons.search),
-                    onPressed: _isScanning ? null : _scanSample,
-                  ),
-                ),
-                onSubmitted: (_) => _scanSample(),
-              ),
-              const SizedBox(height: 24),
-              FilledButton.icon(
-                onPressed: _isScanning ? null : _scanSample,
-                icon: _isScanning
-                    ? const SizedBox(
-                        height: 20,
-                        width: 20,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      )
-                    : const Icon(Icons.search),
-                label: Text(_isScanning ? 'Searching...' : 'Look Up Sample'),
-                style: FilledButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 16),
-                ),
-              ),
-            ],
+      appBar: AppBar(
+        title: const Text('Scan Sample'),
+        actions: [
+          IconButton(
+            tooltip: _cameraMode ? 'Manual entry' : 'Use camera',
+            icon: Icon(_cameraMode ? Icons.keyboard : Icons.camera_alt),
+            onPressed: () => setState(() => _cameraMode = !_cameraMode),
           ),
+        ],
+      ),
+      body: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          children: [
+            Text(
+              'Scan a sample QR to advance it — or a box (BOX-…) to advance the whole package',
+              textAlign: TextAlign.center,
+              style: theme.textTheme.bodyMedium
+                  ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+            ),
+            const SizedBox(height: 20),
+            Expanded(
+              child: _cameraMode ? _buildCamera(theme) : _buildManual(theme),
+            ),
+            if (_processing)
+              const Padding(
+                padding: EdgeInsets.only(top: 16),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    SizedBox(
+                      height: 18,
+                      width: 18,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    ),
+                    SizedBox(width: 12),
+                    Text('Processing scan…'),
+                  ],
+                ),
+              ),
+          ],
         ),
+      ),
+    );
+  }
+
+  Widget _buildCamera(ThemeData theme) {
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(24),
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          MobileScanner(
+            onDetect: (capture) {
+              final barcodes = capture.barcodes;
+              if (barcodes.isEmpty) return;
+              final code = barcodes.first.rawValue;
+              if (code == null || code == _lastCode) return;
+              _lastCode = code;
+              _handleCode(code);
+            },
+          ),
+          // viewfinder frame
+          Center(
+            child: Container(
+              width: 220,
+              height: 220,
+              decoration: BoxDecoration(
+                border: Border.all(color: Colors.white70, width: 3),
+                borderRadius: BorderRadius.circular(20),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildManual(ThemeData theme) {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Container(
+            width: 140,
+            height: 140,
+            decoration: BoxDecoration(
+              color: theme.colorScheme.primaryContainer,
+              borderRadius: BorderRadius.circular(24),
+            ),
+            child: Icon(Icons.qr_code_2,
+                size: 72, color: theme.colorScheme.onPrimaryContainer),
+          ),
+          const SizedBox(height: 28),
+          TextField(
+            controller: _manualController,
+            textInputAction: TextInputAction.go,
+            decoration: const InputDecoration(
+              labelText: 'Sample ID',
+              hintText: 'e.g., NSR-ABC123-XY12',
+              prefixIcon: Icon(Icons.qr_code),
+              border: OutlineInputBorder(),
+            ),
+            onSubmitted: _handleCode,
+          ),
+          const SizedBox(height: 20),
+          FilledButton.icon(
+            onPressed: _processing
+                ? null
+                : () => _handleCode(_manualController.text),
+            icon: const Icon(Icons.bolt),
+            label: const Text('Scan & Advance'),
+            style: FilledButton.styleFrom(
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 32, vertical: 16),
+            ),
+          ),
+          const SizedBox(height: 12),
+          TextButton.icon(
+            onPressed: _processing
+                ? null
+                : () async {
+                    final code = _manualController.text.trim();
+                    if (code.isEmpty) return;
+                    final provider = context.read<SampleProvider>();
+                    final sample = await provider.scanSample(code);
+                    if (sample != null && mounted) {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) =>
+                              SampleDetailScreen(sampleId: sample.id),
+                        ),
+                      );
+                    }
+                  },
+            icon: const Icon(Icons.search),
+            label: const Text('Just look up (no change)'),
+          ),
+        ],
       ),
     );
   }

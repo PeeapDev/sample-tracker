@@ -8,8 +8,11 @@ import { AuthModule } from './modules/auth/auth.module';
 import { UsersModule } from './modules/users/users.module';
 import { SamplesModule } from './modules/samples/samples.module';
 import { DispatchModule } from './modules/dispatch/dispatch.module';
+import { FacilitiesModule } from './modules/facilities/facilities.module';
+import { BatchesModule } from './modules/batches/batches.module';
 import { NotificationsModule } from './modules/notifications/notifications.module';
 import { DashboardModule } from './modules/dashboard/dashboard.module';
+import { PermissionsModule } from './modules/permissions/permissions.module';
 import { SupabaseService } from './services/supabase.service';
 import databaseConfig from './config/database.config';
 import jwtConfig from './config/jwt.config';
@@ -38,8 +41,11 @@ import appConfig from './config/app.config';
     UsersModule,
     SamplesModule,
     DispatchModule,
+    FacilitiesModule,
+    BatchesModule,
     NotificationsModule,
     DashboardModule,
+    PermissionsModule,
   ],
   providers: [
     SupabaseService,

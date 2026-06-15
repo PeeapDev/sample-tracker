@@ -4,9 +4,13 @@ import {
   IsInt,
   IsOptional,
   Min,
+  Max,
   IsDateString,
+  IsNumber,
+  IsIn,
 } from 'class-validator';
-import { SampleStatus } from '../../database/enums';
+import { Type } from 'class-transformer';
+import { SampleStatus } from '../../../database/enums';
 
 export class CreateSampleDto {
   @IsString()
@@ -39,6 +43,11 @@ export class CreateSampleDto {
   @IsString()
   notes?: string;
 
+  // Optionally drop the sample straight into a batch/box at collection time.
+  @IsOptional()
+  @IsString()
+  batchId?: string;
+
   @IsOptional()
   @IsDateString()
   collectedAt?: string;
@@ -63,6 +72,29 @@ export class UpdateSampleStatusDto {
   @IsOptional()
   @IsString()
   pin?: string;
+}
+
+export class ScanSampleDto {
+  @IsString()
+  sampleId: string;
+
+  // Device GPS captured at the moment of the scan (chain-of-custody location).
+  @IsOptional()
+  @IsNumber()
+  latitude?: number;
+
+  @IsOptional()
+  @IsNumber()
+  longitude?: number;
+
+  @IsOptional()
+  @IsString()
+  notes?: string;
+
+  // 'advance' (default) moves the sample to its next stage; 'lost' flags it lost.
+  @IsOptional()
+  @IsIn(['advance', 'lost'])
+  action?: 'advance' | 'lost';
 }
 
 export class SampleFilterDto {
@@ -93,4 +125,18 @@ export class SampleFilterDto {
   @IsOptional()
   @IsString()
   search?: string;
+
+  // Pagination. Omitted → the service returns a capped full set (back-compat).
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  page?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(200)
+  pageSize?: number;
 }

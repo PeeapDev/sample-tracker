@@ -3,7 +3,13 @@ import 'package:http/http.dart' as http;
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 class ApiService {
-  static const String _baseUrl = 'http://localhost:3000/api/v1';
+  /// Backend API root. Override at build time with
+  /// `--dart-define=API_BASE=https://...` for a deployed/cloud backend.
+  static const String baseUrl = String.fromEnvironment(
+    'API_BASE',
+    defaultValue: 'http://localhost:3000/api/v1',
+  );
+  static const String _baseUrl = baseUrl;
   static const _storage = FlutterSecureStorage();
 
   String? _accessToken;
