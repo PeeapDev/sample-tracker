@@ -5,6 +5,7 @@ import '../providers/notification_provider.dart';
 import '../theme/responsive.dart';
 import 'dashboard_screen.dart';
 import 'samples_list_screen.dart';
+import 'batch_list_screen.dart';
 import 'scan_screen.dart';
 import 'notifications_screen.dart';
 import 'settings_screen.dart';
@@ -35,6 +36,8 @@ class _HomeScreenState extends State<HomeScreen> {
     // Scanning (camera) is open to any role granted samples.scan in the RBAC
     // matrix — toggleable per role from the admin Roles & Permissions page.
     final canScan = auth.can('samples.scan');
+    // Browsing boxes is read-only — open to anyone who can view samples.
+    final canViewSamples = auth.can('samples.view');
 
     // Bottom nav stays lean (mobile-first): just the core flows. Notifications
     // live in the top app-bar bell; profile + admin tools live under Settings.
@@ -43,6 +46,9 @@ class _HomeScreenState extends State<HomeScreen> {
           DashboardScreen()),
       const _NavItem(
           Icons.science_outlined, Icons.science, 'Samples', SamplesListScreen()),
+      if (canViewSamples)
+        const _NavItem(Icons.inventory_2_outlined, Icons.inventory_2, 'Boxes',
+            BatchListScreen()),
       if (canScan)
         const _NavItem(Icons.qr_code_scanner_outlined, Icons.qr_code_scanner,
             'Scan', ScanScreen()),

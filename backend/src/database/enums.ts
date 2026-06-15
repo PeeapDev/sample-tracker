@@ -26,6 +26,24 @@ export enum DispatchStatus {
   CANCELLED = 'cancelled',
 }
 
+// Return cargo (letters + supplies) the rider brings back from the center to a
+// facility. Mirrors the sample flow but in the reverse direction.
+export enum ParcelStatus {
+  REGISTERED = 'registered', // logged at the center, awaiting pickup
+  PICKED_UP = 'picked_up', // rider collected it from the center
+  IN_TRANSIT = 'in_transit', // on the way to the destination facility
+  DELIVERED = 'delivered', // confirmed received at the facility
+  LOST = 'lost',
+}
+
+export enum ParcelType {
+  LETTER = 'letter',
+  SUPPLY = 'supply',
+  DOCUMENT = 'document',
+  EQUIPMENT = 'equipment',
+  OTHER = 'other',
+}
+
 export enum NotificationChannel {
   SMS = 'sms',
   PUSH = 'push',

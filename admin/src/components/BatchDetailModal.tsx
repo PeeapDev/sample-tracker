@@ -1,9 +1,11 @@
 import { useEffect, useState } from 'react'
-import { X, Loader2, Boxes, ScanLine } from 'lucide-react'
+import { X, Loader2, Boxes, ScanLine, Printer, Plus } from 'lucide-react'
 import { api, apiError } from '../lib/api'
 import { statusColor, statusLabel } from '../lib/ui'
 import { useAuth } from '../lib/auth'
 import { useRbac } from '../lib/rbac'
+import { printLabels } from '../lib/print'
+import { RebatchModal } from './RebatchModal'
 
 interface BatchSample {
   id: string
@@ -29,11 +31,30 @@ export function BatchDetailModal({ batchId, onClose, onChanged }: { batchId: str
   const { user } = useAuth()
   const { can } = useRbac()
   const canScan = can(user?.role ?? '', 'samples.manage') || user?.role === 'admin'
+  const canBatch = can(user?.role ?? '', 'batches.manage') || user?.role === 'admin'
   const [batch, setBatch] = useState<Batch | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const [result, setResult] = useState<{ message: string; advanced: any[]; skipped: any[] } | null>(null)
+  const [showAdd, setShowAdd] = useState(false)
+
+  function printBoxLabel() {
+    if (!batch) return
+    printLabels([{ code: batch.batchId, qrCode: batch.qrCode, line2: `${batch.sampleCount} samples` }], batch.batchId)
+  }
+
+  function printAllLabels() {
+    if (!batch?.samples?.length) return
+    printLabels(
+      batch.samples.map((s) => ({
+        code: s.sampleId,
+        qrCode: s.qrCode,
+        line2: [s.sampleType, s.diseaseProgram].filter(Boolean).join(' · '),
+      })),
+      `${batch.batchId} labels`,
+    )
+  }
 
   async function load() {
     try {
@@ -113,6 +134,16 @@ export function BatchDetailModal({ batchId, onClose, onChanged }: { batchId: str
                     </div>
                   )}
                   {batch.notes && <div className="mt-1 text-sm text-slate-400">{batch.notes}</div>}
+                  <div className="mt-3 flex flex-wrap justify-center gap-2 sm:justify-start">
+                    <button onClick={printBoxLabel} className="btn-ghost text-xs">
+                      <Printer size={14} /> Print box label
+                    </button>
+                    {batch.samples && batch.samples.length > 0 && (
+                      <button onClick={printAllLabels} className="btn-ghost text-xs">
+                        <Printer size={14} /> Print all labels ({batch.samples.length})
+                      </button>
+                    )}
+                  </div>
                 </div>
               </div>
 
@@ -170,21 +201,38 @@ export function BatchDetailModal({ batchId, onClose, onChanged }: { batchId: str
                 </div>
               )}
 
-              {canScan && (
-                <div className="mt-5 flex items-center gap-2 border-t pt-4 dark:border-ink-700">
-                  <button onClick={scanAdvanceAll} disabled={busy} className="btn-primary">
-                    {busy ? <Loader2 size={16} className="animate-spin" /> : <ScanLine size={16} />}
-                    Scan box → advance all
-                  </button>
-                  <span className="text-xs text-slate-400">
-                    Advances every sample in the box to its next stage
-                  </span>
+              {(canScan || canBatch) && (
+                <div className="mt-5 flex flex-wrap items-center gap-2 border-t pt-4 dark:border-ink-700">
+                  {canScan && (
+                    <button onClick={scanAdvanceAll} disabled={busy} className="btn-primary">
+                      {busy ? <Loader2 size={16} className="animate-spin" /> : <ScanLine size={16} />}
+                      Scan box → advance all
+                    </button>
+                  )}
+                  {canBatch && (
+                    <button onClick={() => setShowAdd(true)} className="btn-ghost">
+                      <Plus size={16} /> Add samples (scan)
+                    </button>
+                  )}
                 </div>
               )}
             </>
           )}
         </div>
       </div>
+
+      {showAdd && batch && (
+        <RebatchModal
+          mode="add"
+          batchId={batch.id}
+          batchLabel={batch.batchId}
+          onClose={() => setShowAdd(false)}
+          onDone={() => {
+            load()
+            onChanged?.()
+          }}
+        />
+      )}
     </div>
   )
 }

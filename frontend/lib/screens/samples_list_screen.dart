@@ -5,6 +5,7 @@ import '../providers/auth_provider.dart';
 import '../models/models.dart';
 import 'sample_detail_screen.dart';
 import 'create_sample_screen.dart';
+import 'batch_scan_screen.dart';
 
 class SamplesListScreen extends StatefulWidget {
   const SamplesListScreen({super.key});
@@ -30,11 +31,22 @@ class _SamplesListScreenState extends State<SamplesListScreen> {
     final samples = context.watch<SampleProvider>();
     final auth = context.watch<AuthProvider>();
     final canCreate = auth.role == 'collector' || auth.role == 'admin';
+    // Re-batching (sorting samples into a new box by scanning) is a write action.
+    final canBatch = auth.can('batches.manage');
 
     return Scaffold(
       appBar: AppBar(
         title: const Text('Samples'),
         actions: [
+          if (canBatch)
+            IconButton(
+              tooltip: 'New batch — sort by scan',
+              icon: const Icon(Icons.inventory_2_outlined),
+              onPressed: () => Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const BatchScanScreen()),
+              ),
+            ),
           IconButton(
             icon: const Icon(Icons.filter_list),
             onPressed: () => _showFilterSheet(context),

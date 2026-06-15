@@ -23,10 +23,10 @@ class AuthProvider extends ChangeNotifier {
   /// Default role → permission map — mirrors the backend's DEFAULT_MATRIX. Used
   /// for demo accounts and as an offline fallback before the server matrix loads.
   static const Map<String, List<String>> _defaultMatrix = {
-    'collector': ['dashboard.view', 'samples.view', 'samples.manage', 'samples.scan'],
+    'collector': ['dashboard.view', 'samples.view', 'samples.manage', 'samples.scan', 'batches.manage'],
     'dispatcher': ['dashboard.view', 'samples.view', 'samples.scan', 'dispatches.view', 'dispatches.manage'],
-    'hub_officer': ['dashboard.view', 'samples.view', 'samples.scan', 'dispatches.view'],
-    'lab_officer': ['dashboard.view', 'samples.view', 'samples.scan'],
+    'hub_officer': ['dashboard.view', 'samples.view', 'samples.scan', 'batches.manage', 'dispatches.view'],
+    'lab_officer': ['dashboard.view', 'samples.view', 'samples.scan', 'batches.manage'],
   };
 
   /// Fetch the authoritative RBAC matrix and keep this user's permissions.

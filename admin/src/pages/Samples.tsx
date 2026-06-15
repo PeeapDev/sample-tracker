@@ -1,8 +1,9 @@
 import { useEffect, useState, type FormEvent, type ReactNode } from 'react'
-import { Search, RefreshCw, FlaskConical, Boxes, CheckSquare, Square, Loader2, X, Plus } from 'lucide-react'
+import { Search, RefreshCw, FlaskConical, Boxes, CheckSquare, Square, Loader2, X, Plus, Printer } from 'lucide-react'
 import { api, apiError } from '../lib/api'
 import { getCache, setCache, hasCache, clearCache } from '../lib/cache'
 import { statusColor, statusLabel } from '../lib/ui'
+import { printLabels } from '../lib/print'
 import { useAuth } from '../lib/auth'
 import { useRbac } from '../lib/rbac'
 import { SampleDetailModal } from '../components/SampleDetailModal'
@@ -58,8 +59,33 @@ export default function Samples() {
   const canBatch = can(user?.role ?? '', 'samples.manage') || user?.role === 'admin'
   const [picked, setPicked] = useState<Set<string>>(new Set())
   const [creating, setCreating] = useState(false)
+  const [printing, setPrinting] = useState(false)
   const [newBatchId, setNewBatchId] = useState<string | null>(null)
   const [showCollect, setShowCollect] = useState(false)
+
+  // The list rows omit the heavy qrCode blob, so fetch the full records for the
+  // picked samples before printing their labels.
+  async function printSelected() {
+    if (picked.size === 0) return
+    setPrinting(true)
+    try {
+      const full = await Promise.all(
+        Array.from(picked).map((id) =>
+          api.get(`/samples/${id}`).then((r) => r.data).catch(() => null),
+        ),
+      )
+      printLabels(
+        full.filter(Boolean).map((s: any) => ({
+          code: s.sampleId,
+          qrCode: s.qrCode,
+          line2: [s.sampleType, s.diseaseProgram].filter(Boolean).join(' · '),
+        })),
+        'Sample labels',
+      )
+    } finally {
+      setPrinting(false)
+    }
+  }
 
   function onSampleCreated(created: SampleRow) {
     setShowCollect(false)
@@ -338,6 +364,10 @@ export default function Samples() {
           <div className="flex items-center gap-3 rounded-2xl border bg-white px-4 py-3 shadow-xl dark:border-ink-700 dark:bg-ink-850">
             <Boxes size={18} className="text-violet-500" />
             <span className="text-sm font-semibold">{picked.size} selected</span>
+            <button onClick={printSelected} disabled={printing} className="btn-ghost">
+              {printing ? <Loader2 size={16} className="animate-spin" /> : <Printer size={16} />}
+              Print labels
+            </button>
             <button onClick={createBatch} disabled={creating} className="btn-primary">
               {creating ? <Loader2 size={16} className="animate-spin" /> : <Boxes size={16} />}
               Create Batch
@@ -400,7 +430,7 @@ function CollectSampleModal({
         const hf = list.find((f: any) => f.type === 'health_facility') ?? list[0]
         if (hf) setForm((f) => ({ ...f, facilityId: hf.id }))
       })
-      .catch(() => setError('Could not load facilities'))
+      .catch((e) => setError(apiError(e, 'Could not load facilities')))
     api
       .get('/batches')
       .then((res) => setBatches(Array.isArray(res.data) ? res.data : []))

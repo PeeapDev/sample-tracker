@@ -441,6 +441,30 @@ export class SamplesService {
     return this.findById(id);
   }
 
+  /**
+   * Record a re-batch (sorting) move in a sample's chain of custody. The status
+   * is unchanged — this is a custody/location note, surfaced specially in the
+   * timeline. Origin (facilityId) is never altered; the event is stamped at the
+   * sorting officer's facility.
+   */
+  async logRebatch(
+    sample: Sample,
+    actor: ScanActor,
+    fromLabel: string | null,
+    toLabel: string,
+  ): Promise<void> {
+    await this.logEvent(
+      sample.id,
+      sample.status,
+      actor.sub,
+      actor.facilityId || sample.facilityId,
+      {
+        rebatch: { from: fromLabel, to: toLabel },
+        note: `Sorted into ${toLabel}${fromLabel ? ` from ${fromLabel}` : ''}`,
+      },
+    );
+  }
+
   private generateSampleId(): string {
     const prefix = 'NSR';
     const timestamp = Date.now().toString(36).toUpperCase().slice(-6);

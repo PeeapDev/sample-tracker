@@ -24,6 +24,15 @@ export class CreateBatchDto {
   notes?: string;
 }
 
+export class AddSamplesDto {
+  // Samples to move into this batch — each entry may be a human sample code
+  // (e.g. NSR-ABC123-XY12, from a scan) or an internal UUID. Samples already in
+  // another batch are moved here, keeping their origin facility.
+  @IsArray()
+  @IsString({ each: true })
+  sampleIds: string[];
+}
+
 export class ScanBatchDto {
   @IsString()
   batchId: string;

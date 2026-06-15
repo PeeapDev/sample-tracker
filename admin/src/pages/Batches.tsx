@@ -1,8 +1,11 @@
 import { useEffect, useState } from 'react'
-import { RefreshCw, Boxes, ChevronRight } from 'lucide-react'
+import { RefreshCw, Boxes, ChevronRight, ScanLine } from 'lucide-react'
 import { api, apiError } from '../lib/api'
 import { getCache, setCache, hasCache } from '../lib/cache'
 import { BatchDetailModal } from '../components/BatchDetailModal'
+import { RebatchModal } from '../components/RebatchModal'
+import { useAuth } from '../lib/auth'
+import { useRbac } from '../lib/rbac'
 
 interface BatchRow {
   id: string
@@ -19,6 +22,11 @@ export default function Batches() {
   const [refreshing, setRefreshing] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [openId, setOpenId] = useState<string | null>(null)
+  const [sorting, setSorting] = useState(false)
+
+  const { user } = useAuth()
+  const { can } = useRbac()
+  const canBatch = can(user?.role ?? '', 'batches.manage') || user?.role === 'admin'
 
   async function load() {
     setRefreshing(true)
@@ -49,9 +57,16 @@ export default function Batches() {
             {rows.length} package boxes · scan a box to view its manifest or advance every sample inside
           </p>
         </div>
-        <button onClick={load} className="btn-ghost">
-          <RefreshCw size={16} className={refreshing ? 'animate-spin' : ''} /> Refresh
-        </button>
+        <div className="flex gap-2">
+          <button onClick={load} className="btn-ghost">
+            <RefreshCw size={16} className={refreshing ? 'animate-spin' : ''} /> Refresh
+          </button>
+          {canBatch && (
+            <button onClick={() => setSorting(true)} className="btn-primary">
+              <ScanLine size={16} /> New batch — sort by scan
+            </button>
+          )}
+        </div>
       </div>
 
       {error ? (
@@ -101,6 +116,10 @@ export default function Batches() {
 
       {openId && (
         <BatchDetailModal batchId={openId} onClose={() => setOpenId(null)} onChanged={load} />
+      )}
+
+      {sorting && (
+        <RebatchModal mode="create" onClose={() => setSorting(false)} onDone={load} />
       )}
     </div>
   )

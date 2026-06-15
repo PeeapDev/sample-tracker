@@ -197,6 +197,39 @@ class SampleProvider extends ChangeNotifier {
     }
   }
 
+  /// Sort samples into an existing batch by scanning. [codes] may be human
+  /// codes (e.g. NSR-ABC123-XY12) or UUIDs; the backend moves each one out of
+  /// its old batch while keeping its origin facility. Returns the server's
+  /// {batchId, addedCount, skippedCount, added, skipped, message, batch} or null.
+  Future<Map<String, dynamic>?> addSamplesToBatch(
+    String batchUuid,
+    List<String> codes,
+  ) async {
+    try {
+      final data = await _api.post(
+        '/batches/$batchUuid/samples',
+        {'sampleIds': codes},
+      );
+      _error = null;
+      return data;
+    } catch (e) {
+      _error = e is ApiException ? e.message : 'Failed to add samples to batch';
+      notifyListeners();
+      return null;
+    }
+  }
+
+  /// Full batch manifest by uuid (the box plus every sample inside it). Read-only.
+  Future<Map<String, dynamic>?> loadBatch(String batchUuid) async {
+    try {
+      return await _api.get('/batches/$batchUuid');
+    } catch (e) {
+      _error = e is ApiException ? e.message : 'Failed to load batch';
+      notifyListeners();
+      return null;
+    }
+  }
+
   Future<bool> createSample(Map<String, dynamic> sampleData) async {
     _isLoading = true;
     notifyListeners();

@@ -9,7 +9,7 @@ import {
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { BatchesService } from './batches.service';
-import { CreateBatchDto, ScanBatchDto } from './dto/batch.dto';
+import { CreateBatchDto, ScanBatchDto, AddSamplesDto } from './dto/batch.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
@@ -23,10 +23,20 @@ export class BatchesController {
   constructor(private readonly batchesService: BatchesService) {}
 
   @Post()
-  @Roles(UserRole.COLLECTOR, UserRole.HUB_OFFICER, UserRole.ADMIN)
+  @Roles(UserRole.COLLECTOR, UserRole.HUB_OFFICER, UserRole.LAB_OFFICER, UserRole.ADMIN)
   @ApiOperation({ summary: 'Pack selected samples into a batch/box (generates a box QR)' })
   create(@Body() dto: CreateBatchDto, @Req() req) {
     return this.batchesService.create(dto, req.user.sub);
+  }
+
+  @Post(':id/samples')
+  @Roles(UserRole.COLLECTOR, UserRole.HUB_OFFICER, UserRole.LAB_OFFICER, UserRole.ADMIN)
+  @ApiOperation({
+    summary:
+      'Sort samples into this batch by scanning — moves them out of any prior batch, keeps their origin, logs the move',
+  })
+  addSamples(@Param('id') id: string, @Body() dto: AddSamplesDto, @Req() req) {
+    return this.batchesService.addSamples(id, dto.sampleIds, req.user);
   }
 
   @Get()

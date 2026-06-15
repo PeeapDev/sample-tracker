@@ -9,6 +9,7 @@ import {
   ScanLine,
   Printer,
   Building2,
+  Boxes,
 } from 'lucide-react'
 import { api, apiError } from '../lib/api'
 import { statusColor, statusLabel } from '../lib/ui'
@@ -260,22 +261,32 @@ export function SampleDetailModal({
                   </div>
                   <ol className="space-y-3">
                     {timeline.map((e) => {
-                      const c = statusColor(String(e.event))
+                      const rebatch = e.metadata?.rebatch
+                      const c = rebatch ? '#8B5CF6' : statusColor(String(e.event))
                       const actor = e.actor
                         ? `${e.actor.firstName ?? ''} ${e.actor.lastName ?? ''}`.trim()
                         : null
                       const hasGps = e.latitude != null && e.longitude != null
+                      const title = rebatch
+                        ? `Sorted into ${rebatch.to}${rebatch.from ? ` (from ${rebatch.from})` : ''}`
+                        : statusLabel(String(e.event))
                       return (
                         <li key={e.id} className="flex gap-3">
                           <span
                             className="mt-0.5 grid h-6 w-6 shrink-0 place-items-center rounded-full text-white"
                             style={{ background: c }}
                           >
-                            {e.metadata?.scanned ? <ScanLine size={12} /> : <CheckCircle2 size={12} />}
+                            {rebatch ? (
+                              <Boxes size={12} />
+                            ) : e.metadata?.scanned ? (
+                              <ScanLine size={12} />
+                            ) : (
+                              <CheckCircle2 size={12} />
+                            )}
                           </span>
                           <div className="min-w-0 flex-1">
                             <div className="flex flex-wrap items-center gap-x-2 text-sm">
-                              <span className="font-semibold">{statusLabel(String(e.event))}</span>
+                              <span className="font-semibold">{title}</span>
                               <span className="text-xs text-slate-400">
                                 {e.timestamp ? new Date(e.timestamp).toLocaleString() : ''}
                               </span>

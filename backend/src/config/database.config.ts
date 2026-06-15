@@ -4,6 +4,9 @@ import { Dispatch } from '../database/entities/dispatch.entity';
 import { EventLog } from '../database/entities/event-log.entity';
 import { Facility } from '../database/entities/facility.entity';
 import { Notification } from '../database/entities/notification.entity';
+import { Parcel } from '../database/entities/parcel.entity';
+import { ParcelEvent } from '../database/entities/parcel-event.entity';
+import { RiderLocation } from '../database/entities/rider-location.entity';
 import { RolePermission } from '../database/entities/role-permission.entity';
 import { Sample } from '../database/entities/sample.entity';
 import { User } from '../database/entities/user.entity';
@@ -16,6 +19,9 @@ const entities = [
   EventLog,
   Facility,
   Notification,
+  Parcel,
+  ParcelEvent,
+  RiderLocation,
   RolePermission,
   Sample,
   User,

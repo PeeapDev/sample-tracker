@@ -10,6 +10,8 @@ import { SamplesModule } from './modules/samples/samples.module';
 import { DispatchModule } from './modules/dispatch/dispatch.module';
 import { FacilitiesModule } from './modules/facilities/facilities.module';
 import { BatchesModule } from './modules/batches/batches.module';
+import { ParcelsModule } from './modules/parcels/parcels.module';
+import { TrackingModule } from './modules/tracking/tracking.module';
 import { NotificationsModule } from './modules/notifications/notifications.module';
 import { DashboardModule } from './modules/dashboard/dashboard.module';
 import { PermissionsModule } from './modules/permissions/permissions.module';
@@ -43,6 +45,8 @@ import appConfig from './config/app.config';
     DispatchModule,
     FacilitiesModule,
     BatchesModule,
+    ParcelsModule,
+    TrackingModule,
     NotificationsModule,
     DashboardModule,
     PermissionsModule,

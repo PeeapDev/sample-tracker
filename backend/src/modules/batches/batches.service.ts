@@ -62,13 +62,109 @@ export class BatchesService {
     );
 
     if (samples.length > 0) {
+      // Samples may already belong to another box; capture those so we can fix
+      // their counts after the move.
+      const previousBatchIds = Array.from(
+        new Set(
+          samples
+            .map((s) => s.batchId)
+            .filter((b): b is string => !!b && b !== batch.id),
+        ),
+      );
       await this.sampleRepository.update(
         { id: In(samples.map((s) => s.id)) },
         { batchId: batch.id },
       );
+      if (previousBatchIds.length) {
+        await this.recountBatches(previousBatchIds);
+      }
     }
 
     return this.findById(batch.id);
+  }
+
+  /**
+   * Sort samples into an existing batch by scanning. Samples already in another
+   * box are moved here (their origin facility is never touched), every move is
+   * recorded in the sample's chain of custody, and the affected boxes' counts
+   * are recomputed. Accepts human sample codes or internal UUIDs.
+   */
+  async addSamples(targetBatchId: string, codes: string[], actor: ScanActor) {
+    const batch = await this.batchRepository.findOne({
+      where: { id: targetBatchId },
+    });
+    if (!batch) {
+      throw new NotFoundException('Batch not found');
+    }
+    if (!codes?.length) {
+      throw new BadRequestException('No samples to add.');
+    }
+
+    // Resolve by either internal id or human sampleId so scanned codes work.
+    const samples = await this.sampleRepository.find({
+      where: [{ id: In(codes) }, { sampleId: In(codes) }],
+    });
+
+    // Map prior batches to their labels for a readable timeline note.
+    const previousBatchIds = Array.from(
+      new Set(
+        samples
+          .map((s) => s.batchId)
+          .filter((b): b is string => !!b && b !== batch.id),
+      ),
+    );
+    const previousBatches = previousBatchIds.length
+      ? await this.batchRepository.find({ where: { id: In(previousBatchIds) } })
+      : [];
+    const labelById = new Map(previousBatches.map((b) => [b.id, b.batchId]));
+
+    const added: any[] = [];
+    const skipped: any[] = [];
+    const seen = new Set<string>();
+    const affected = new Set<string>([batch.id]);
+
+    for (const s of samples) {
+      seen.add(s.id);
+      seen.add(s.sampleId);
+      if (s.batchId === batch.id) {
+        skipped.push({ sampleId: s.sampleId, reason: 'Already in this box' });
+        continue;
+      }
+      const fromLabel = s.batchId ? labelById.get(s.batchId) ?? null : null;
+      if (s.batchId) affected.add(s.batchId);
+      await this.sampleRepository.update(s.id, { batchId: batch.id });
+      await this.samplesService.logRebatch(s, actor, fromLabel, batch.batchId);
+      added.push({ sampleId: s.sampleId, from: fromLabel });
+    }
+
+    // Codes that matched no sample at all.
+    for (const code of codes) {
+      if (!seen.has(code)) {
+        skipped.push({ sampleId: code, reason: 'Not found' });
+      }
+    }
+
+    await this.recountBatches([...affected]);
+
+    return {
+      batchId: batch.batchId,
+      addedCount: added.length,
+      skippedCount: skipped.length,
+      added,
+      skipped,
+      message: `Added ${added.length} sample(s) to ${batch.batchId}.`,
+      batch: await this.findById(batch.id),
+    };
+  }
+
+  /** Recompute the denormalized sampleCount for each given batch id. */
+  private async recountBatches(ids: string[]): Promise<void> {
+    for (const id of ids) {
+      const count = await this.sampleRepository.count({
+        where: { batchId: id },
+      });
+      await this.batchRepository.update(id, { sampleCount: count });
+    }
   }
 
   findAll(): Promise<Batch[]> {

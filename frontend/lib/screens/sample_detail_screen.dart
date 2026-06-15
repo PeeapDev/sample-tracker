@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 import '../providers/sample_provider.dart';
 import '../providers/auth_provider.dart';
+import '../services/label_printer.dart';
 import '../models/models.dart';
 
 class SampleDetailScreen extends StatefulWidget {
@@ -91,6 +92,13 @@ class _SampleDetailScreenState extends State<SampleDetailScreen> {
                         fontSize: 16,
                       ),
                     ),
+                  ),
+                  const SizedBox(height: 16),
+                  // Read-only: anyone who can view the sample can print its label.
+                  OutlinedButton.icon(
+                    onPressed: () => LabelPrinter.printSampleLabels([sample]),
+                    icon: const Icon(Icons.print_outlined),
+                    label: const Text('Print label'),
                   ),
                 ],
               ),
