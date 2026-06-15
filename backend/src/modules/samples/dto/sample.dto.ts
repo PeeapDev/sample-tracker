@@ -97,6 +97,24 @@ export class ScanSampleDto {
   action?: 'advance' | 'lost';
 }
 
+export class CreateFeedbackDto {
+  // 1–5 rating of the rider's delivery.
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  @Max(5)
+  riderRating?: number;
+
+  // Sample condition on arrival.
+  @IsOptional()
+  @IsIn(['intact', 'compromised', 'damaged', 'leaking'])
+  sampleCondition?: string;
+
+  @IsOptional()
+  @IsString()
+  comment?: string;
+}
+
 export class SampleFilterDto {
   @IsOptional()
   @IsEnum(SampleStatus)

@@ -243,7 +243,7 @@ export function SampleDetailModal({
               <div className="mb-2 text-xs font-semibold uppercase tracking-wider text-slate-400">
                 Journey
               </div>
-              <SampleTracker sample={s} />
+              <SampleTracker sample={s} timeline={timeline} />
 
               {/* Sample QR — generated at collection, scanned at every stage */}
               {s.qrCode && (
@@ -278,6 +278,7 @@ export function SampleDetailModal({
                   value={[s.patientAge && `${s.patientAge}y`, s.patientGender].filter(Boolean).join(', ') || '—'}
                 />
                 <Detail label="Facility" value={s.facility?.name ?? '—'} />
+                <Detail label="Batch" value={s.batch?.batchId ?? '—'} />
                 <Detail
                   label="Registered"
                   value={s.createdAt ? new Date(s.createdAt).toLocaleString() : '—'}

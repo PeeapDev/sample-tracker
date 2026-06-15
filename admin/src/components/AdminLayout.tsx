@@ -27,6 +27,7 @@ import { useTheme } from '../lib/theme'
 import { useRbac } from '../lib/rbac'
 import { useOnline } from '../lib/useOnline'
 import { cn, roleMeta } from '../lib/ui'
+import { NotificationsBell } from './NotificationsBell'
 
 interface NavItem {
   to: string
@@ -242,6 +243,7 @@ export default function AdminLayout() {
                 <span className="hidden sm:inline">Accept</span>
               </button>
             )}
+            <NotificationsBell />
             <button
               onClick={toggle}
               title="Toggle theme"

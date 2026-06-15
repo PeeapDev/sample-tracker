@@ -16,6 +16,7 @@ import {
   UpdateSampleStatusDto,
   ScanSampleDto,
   SampleFilterDto,
+  CreateFeedbackDto,
 } from './dto/sample.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
@@ -93,6 +94,24 @@ export class SamplesController {
   async getTimeline(@Param('id') id: string) {
     const sample = await this.samplesService.findById(id);
     return this.samplesService.getTimeline(sample.sampleId);
+  }
+
+  @Get(':id/feedback')
+  @Roles(UserRole.COLLECTOR, UserRole.DISPATCHER, UserRole.HUB_OFFICER, UserRole.LAB_OFFICER, UserRole.ADMIN)
+  @ApiOperation({ summary: 'List feedback (rider rating + sample condition) for a sample' })
+  async getFeedback(@Param('id') id: string) {
+    return this.samplesService.getFeedback(id);
+  }
+
+  @Post(':id/feedback')
+  @Roles(UserRole.COLLECTOR, UserRole.DISPATCHER, UserRole.HUB_OFFICER, UserRole.LAB_OFFICER, UserRole.ADMIN)
+  @ApiOperation({ summary: 'Leave feedback on a sample handoff (rider rating + condition)' })
+  async addFeedback(
+    @Param('id') id: string,
+    @Body() dto: CreateFeedbackDto,
+    @Req() req,
+  ) {
+    return this.samplesService.addFeedback(id, dto, req.user.sub);
   }
 
   @Patch(':id/status')

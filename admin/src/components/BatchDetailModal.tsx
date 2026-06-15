@@ -51,6 +51,7 @@ export function BatchDetailModal({ batchId, onClose, onChanged }: { batchId: str
         code: s.sampleId,
         qrCode: s.qrCode,
         line2: [s.sampleType, s.diseaseProgram].filter(Boolean).join(' · '),
+        line3: batch.batchId, // stamp the box number on each sample label
       })),
       `${batch.batchId} labels`,
     )

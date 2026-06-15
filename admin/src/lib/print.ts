@@ -6,6 +6,7 @@ export interface PrintLabel {
   code: string // sampleId or batchId — printed under the QR
   qrCode?: string // base64 PNG data URL of the QR
   line2?: string // e.g. "Blood · Malaria"
+  line3?: string // e.g. the box number a sample belongs to ("BOX-…")
 }
 
 export function printLabels(labels: PrintLabel[], title = 'QR Labels') {
@@ -22,6 +23,7 @@ export function printLabels(labels: PrintLabel[], title = 'QR Labels') {
         <img src="${l.qrCode}" alt="${l.code}" />
         <div class="code">${l.code}</div>
         ${l.line2 ? `<div class="meta">${l.line2}</div>` : ''}
+        ${l.line3 ? `<div class="batch">${l.line3}</div>` : ''}
       </div>`,
     )
     .join('')
@@ -45,6 +47,7 @@ export function printLabels(labels: PrintLabel[], title = 'QR Labels') {
       .label img { width: 150px; height: 150px; image-rendering: pixelated; }
       .code { font-family: ui-monospace, monospace; font-weight: 700; font-size: 13px; margin-top: 6px; word-break: break-all; }
       .meta { color: #555; font-size: 11px; margin-top: 2px; }
+      .batch { font-family: ui-monospace, monospace; font-size: 10px; font-weight: 700; color: #1B5E20; margin-top: 3px; }
     </style>
   </head>
   <body>

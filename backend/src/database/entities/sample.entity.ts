@@ -13,6 +13,7 @@ import { SampleStatus } from '../enums';
 import { User } from './user.entity';
 import { Facility } from './facility.entity';
 import { EventLog } from './event-log.entity';
+import { Batch } from './batch.entity';
 
 @Entity('samples')
 export class Sample {
@@ -95,6 +96,13 @@ export class Sample {
   @Index()
   @Column({ nullable: true })
   batchId: string;
+
+  // Relation backed by the batchId FK above — lets queries surface the box's
+  // human-readable code (batch.batchId, e.g. BOX-…). Not eager: only loaded
+  // when explicitly joined/requested, so the lean list query stays lean.
+  @ManyToOne(() => Batch, { nullable: true })
+  @JoinColumn({ name: 'batchId' })
+  batch: Batch;
 
   @Column({ type: 'timestamp', nullable: true })
   collectedAt: Date;

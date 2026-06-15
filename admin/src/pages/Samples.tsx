@@ -21,6 +21,7 @@ interface SampleRow {
   village?: string
   createdAt: string
   facility?: { name?: string } | null
+  batch?: { batchId?: string } | null
   // List rows also carry stage timestamps used by the journey tracker.
   [key: string]: unknown
 }
@@ -232,6 +233,7 @@ export default function Samples() {
                 <th className="px-5 py-3 font-medium">Sample</th>
                 <th className="px-5 py-3 font-medium">Program</th>
                 <th className="px-5 py-3 font-medium">Status</th>
+                <th className="hidden px-5 py-3 font-medium lg:table-cell">Batch</th>
                 <th className="hidden px-5 py-3 font-medium md:table-cell">Facility</th>
                 <th className="px-5 py-3 font-medium">Collected</th>
               </tr>
@@ -278,6 +280,15 @@ export default function Samples() {
                       {statusLabel(s.status)}
                     </span>
                   </td>
+                  <td className="hidden px-5 py-3 lg:table-cell">
+                    {s.batch?.batchId ? (
+                      <span className="inline-flex items-center gap-1.5 rounded-full bg-slate-100 px-2 py-0.5 font-mono text-xs text-slate-600 dark:bg-ink-800 dark:text-slate-300">
+                        <Boxes size={12} /> {s.batch.batchId}
+                      </span>
+                    ) : (
+                      <span className="text-slate-400">—</span>
+                    )}
+                  </td>
                   <td className="hidden px-5 py-3 text-slate-400 md:table-cell">
                     {s.facility?.name ?? '—'}
                   </td>
@@ -288,7 +299,7 @@ export default function Samples() {
               ))}
               {rows.length === 0 && (
                 <tr>
-                  <td colSpan={canBatch ? 6 : 5} className="px-5 py-14">
+                  <td colSpan={canBatch ? 7 : 6} className="px-5 py-14">
                     <div className="flex flex-col items-center gap-3 text-center">
                       <span className="grid h-12 w-12 place-items-center rounded-full bg-slate-100 text-slate-400 dark:bg-ink-800">
                         <FlaskConical size={22} />

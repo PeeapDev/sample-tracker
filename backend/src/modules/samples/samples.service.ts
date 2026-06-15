@@ -10,15 +10,18 @@ import { v4 as uuidv4 } from 'uuid';
 import * as QRCode from 'qrcode';
 import { Sample } from '../../database/entities/sample.entity';
 import { EventLog } from '../../database/entities/event-log.entity';
+import { SampleFeedback } from '../../database/entities/sample-feedback.entity';
 import { Batch } from '../../database/entities/batch.entity';
 import { Facility } from '../../database/entities/facility.entity';
 import { User } from '../../database/entities/user.entity';
+import { Dispatch } from '../../database/entities/dispatch.entity';
 import { SampleStatus, UserRole, NotificationType } from '../../database/enums';
 import {
   CreateSampleDto,
   UpdateSampleStatusDto,
   ScanSampleDto,
   SampleFilterDto,
+  CreateFeedbackDto,
 } from './dto/sample.dto';
 import {
   NotificationsService,
@@ -78,8 +81,40 @@ export class SamplesService {
     private sampleRepository: Repository<Sample>,
     @InjectRepository(EventLog)
     private eventLogRepository: Repository<EventLog>,
+    @InjectRepository(SampleFeedback)
+    private feedbackRepository: Repository<SampleFeedback>,
     private notificationsService: NotificationsService,
   ) {}
+
+  /// Record feedback (rider rating + sample condition + comment) left from the
+  /// tracker popup. Ties the rating to the sample's current rider for later
+  /// per-rider aggregation.
+  async addFeedback(
+    id: string,
+    dto: CreateFeedbackDto,
+    raterId: string,
+  ): Promise<SampleFeedback> {
+    const sample = await this.findById(id);
+    const feedback = this.feedbackRepository.create({
+      sampleId: sample.id,
+      raterId,
+      riderId: sample.dispatcherId,
+      riderRating: dto.riderRating,
+      sampleCondition: dto.sampleCondition,
+      comment: dto.comment,
+      stage: sample.status,
+    });
+    return this.feedbackRepository.save(feedback);
+  }
+
+  async getFeedback(id: string): Promise<SampleFeedback[]> {
+    const sample = await this.findById(id);
+    return this.feedbackRepository.find({
+      where: { sampleId: sample.id },
+      relations: ['rater'],
+      order: { createdAt: 'DESC' },
+    });
+  }
 
   async create(dto: CreateSampleDto, userId: string): Promise<Sample> {
     const sampleId = this.generateSampleId();
@@ -171,6 +206,9 @@ export class SamplesService {
     'facility.id',
     'facility.name',
     'facility.district',
+    // Only the box's id + human code — never its QR blob — so the list stays lean.
+    'batch.id',
+    'batch.batchId',
   ];
 
   // Hard ceiling on rows returned when the caller doesn't paginate, so a
@@ -181,6 +219,7 @@ export class SamplesService {
     return this.sampleRepository
       .createQueryBuilder('sample')
       .leftJoin('sample.facility', 'facility')
+      .leftJoin('sample.batch', 'batch')
       .select(SamplesService.LIST_COLUMNS);
   }
 
@@ -232,7 +271,7 @@ export class SamplesService {
   async findById(id: string): Promise<Sample> {
     const sample = await this.sampleRepository.findOne({
       where: { id },
-      relations: ['facility', 'collectedBy', 'dispatcher'],
+      relations: ['facility', 'collectedBy', 'dispatcher', 'batch'],
     });
     if (!sample) {
       throw new NotFoundException('Sample not found');
@@ -243,7 +282,7 @@ export class SamplesService {
   async findBySampleId(sampleId: string): Promise<Sample> {
     const sample = await this.sampleRepository.findOne({
       where: { sampleId },
-      relations: ['facility', 'collectedBy', 'dispatcher'],
+      relations: ['facility', 'collectedBy', 'dispatcher', 'batch'],
     });
     if (!sample) {
       throw new NotFoundException('Sample not found');
@@ -551,25 +590,22 @@ export class SamplesService {
     // sample's own facility if the scanner has none.
     const facilityId = actor.facilityId || sample.facilityId;
     let where = 'the receiving facility';
+    let district: string | null = null;
     if (facilityId) {
       const facility = await this.sampleRepository.manager.findOne(Facility, {
         where: { id: facilityId },
-        select: { id: true, name: true },
+        select: { id: true, name: true, district: true },
       });
       if (facility?.name) where = facility.name;
+      district = facility?.district ?? null;
     }
 
-    const base: CreateNotificationInput = {
-      type: config.type,
-      title: config.title,
-      message: `${config.message} Sample ${sample.sampleId} is now confirmed at ${where}.`,
-      sampleId: sample.id,
-      metadata: {
-        status,
-        facilityId,
-        latitude: coords?.latitude,
-        longitude: coords?.longitude,
-      },
+    let message = `${config.message} Sample ${sample.sampleId} is now confirmed at ${where}.`;
+    const metadata: Record<string, any> = {
+      status,
+      facilityId,
+      latitude: coords?.latitude,
+      longitude: coords?.longitude,
     };
 
     // De-duped stakeholders: collector, assigned dispatcher, accepting officer.
@@ -579,12 +615,139 @@ export class SamplesService {
       ) as string[],
     );
 
+    // Pickup is the moment ops cares about: tell every admin and every hub
+    // officer in the collecting district who has the sample (the rider) and
+    // roughly how long until it reaches the destination hub.
+    if (status === SampleStatus.PICKED_UP) {
+      const ctx = await this.resolvePickupContext(sample, coords);
+      if (ctx.riderName) metadata.riderName = ctx.riderName;
+      if (ctx.destinationName) metadata.destination = ctx.destinationName;
+      if (ctx.etaMinutes != null) metadata.etaMinutes = ctx.etaMinutes;
+
+      const rider = ctx.riderName ? `Rider ${ctx.riderName}` : 'The rider';
+      const eta =
+        ctx.etaMinutes != null && ctx.destinationName
+          ? ` ETA to ${ctx.destinationName}: ~${ctx.etaMinutes} min.`
+          : ctx.destinationName
+            ? ` En route to ${ctx.destinationName}.`
+            : '';
+      message = `${rider} picked up sample ${sample.sampleId} at ${where}.${eta}`;
+
+      await this.addBroadcastRecipients(recipients, district);
+    }
+
+    const base: CreateNotificationInput = {
+      type: config.type,
+      title: config.title,
+      message,
+      sampleId: sample.id,
+      metadata,
+    };
+
     await Promise.all([
       this.notificationsService.createNotification(base), // broadcast for dashboards
       ...[...recipients].map((userId) =>
         this.notificationsService.createNotification({ ...base, userId }),
       ),
     ]);
+  }
+
+  /** Add every admin (global) + every hub officer in [district] to the set. */
+  private async addBroadcastRecipients(
+    recipients: Set<string>,
+    district: string | null,
+  ): Promise<void> {
+    const mgr = this.sampleRepository.manager;
+    const admins = await mgr.find(User, {
+      where: { role: UserRole.ADMIN, isActive: true },
+      select: { id: true },
+    });
+    admins.forEach((u) => recipients.add(u.id));
+
+    if (district) {
+      const hubOfficers = await mgr
+        .getRepository(User)
+        .createQueryBuilder('u')
+        .leftJoin('u.facility', 'f')
+        .where('u.role = :role', { role: UserRole.HUB_OFFICER })
+        .andWhere('u.isActive = true')
+        .andWhere('f.district = :district', { district })
+        .select(['u.id'])
+        .getMany();
+      hubOfficers.forEach((u) => recipients.add(u.id));
+    }
+  }
+
+  /** Rider name + destination hub + rough ETA for a pickup alert. */
+  private async resolvePickupContext(
+    sample: Sample,
+    coords?: GpsCoords,
+  ): Promise<{ riderName: string | null; destinationName: string | null; etaMinutes: number | null }> {
+    const mgr = this.sampleRepository.manager;
+
+    let riderName: string | null = null;
+    if (sample.dispatcherId) {
+      const rider = await mgr.findOne(User, {
+        where: { id: sample.dispatcherId },
+        select: { id: true, firstName: true, lastName: true },
+      });
+      if (rider) {
+        riderName = `${rider.firstName ?? ''} ${rider.lastName ?? ''}`.trim() || null;
+      }
+    }
+
+    // Destination = the dispatch's destination hub if assigned, else a hub in the
+    // collecting district, else any hub.
+    let dest: Facility | null = null;
+    if (sample.dispatchId) {
+      const dispatch = await mgr.findOne(Dispatch, {
+        where: { id: sample.dispatchId },
+        relations: ['destinationFacility'],
+      });
+      dest = dispatch?.destinationFacility ?? null;
+    }
+    if (!dest) {
+      let district: string | null = null;
+      if (sample.facilityId) {
+        const f = await mgr.findOne(Facility, {
+          where: { id: sample.facilityId },
+          select: { id: true, district: true },
+        });
+        district = f?.district ?? null;
+      }
+      dest = await mgr.findOne(Facility, {
+        where: district
+          ? { type: 'hub', district, isActive: true }
+          : { type: 'hub', isActive: true },
+      });
+    }
+
+    let etaMinutes: number | null = null;
+    const dLat = dest?.latitude != null ? Number(dest.latitude) : null;
+    const dLng = dest?.longitude != null ? Number(dest.longitude) : null;
+    if (
+      coords?.latitude != null &&
+      coords?.longitude != null &&
+      dLat != null &&
+      dLng != null
+    ) {
+      const km = this.haversineKm(coords.latitude, coords.longitude, dLat, dLng);
+      etaMinutes = Math.max(1, Math.round((km / 30) * 60)); // ~30 km/h
+    }
+
+    return { riderName, destinationName: dest?.name ?? null, etaMinutes };
+  }
+
+  private haversineKm(aLat: number, aLng: number, bLat: number, bLng: number): number {
+    const R = 6371;
+    const dLat = ((bLat - aLat) * Math.PI) / 180;
+    const dLng = ((bLng - aLng) * Math.PI) / 180;
+    const s =
+      Math.sin(dLat / 2) ** 2 +
+      Math.cos((aLat * Math.PI) / 180) *
+        Math.cos((bLat * Math.PI) / 180) *
+        Math.sin(dLng / 2) ** 2;
+    return 2 * R * Math.asin(Math.sqrt(s));
   }
 
   private async sendStatusNotification(

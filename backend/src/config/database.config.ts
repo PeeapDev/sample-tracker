@@ -9,6 +9,7 @@ import { ParcelEvent } from '../database/entities/parcel-event.entity';
 import { RiderLocation } from '../database/entities/rider-location.entity';
 import { RolePermission } from '../database/entities/role-permission.entity';
 import { Sample } from '../database/entities/sample.entity';
+import { SampleFeedback } from '../database/entities/sample-feedback.entity';
 import { User } from '../database/entities/user.entity';
 
 // Explicit entity list (not a glob): the serverless build bundles the app into a
@@ -24,6 +25,7 @@ const entities = [
   RiderLocation,
   RolePermission,
   Sample,
+  SampleFeedback,
   User,
 ];
 
