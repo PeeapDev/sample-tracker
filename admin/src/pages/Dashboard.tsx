@@ -41,6 +41,7 @@ import {
 import { useTheme } from '../lib/theme'
 import { HoverCard } from '../components/HoverCard'
 import { SampleDetailModal } from '../components/SampleDetailModal'
+import LiveMap from './LiveMap'
 
 interface Dash {
   operational: Record<string, number>
@@ -344,6 +345,11 @@ export default function Dashboard() {
             </ul>
           )}
         </ChartCard>
+      </div>
+
+      {/* Live rider map — sits below the charts on the dashboard */}
+      <div className="dash-section">
+        <LiveMap embedded />
       </div>
 
       {tracked && (

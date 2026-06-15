@@ -121,7 +121,7 @@ function FitBounds({ points }: { points: Array<[number, number]> }) {
   return null
 }
 
-export default function LiveMap() {
+export default function LiveMap({ embedded = false }: { embedded?: boolean } = {}) {
   const [riders, setRiders] = useState<Rider[]>([])
   const [facilities, setFacilities] = useState<Facility[]>([])
   const [loading, setLoading] = useState(true)
@@ -209,7 +209,9 @@ export default function LiveMap() {
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h2 className="text-2xl font-extrabold tracking-tight">Live Map</h2>
+          <h2 className={embedded ? 'text-lg font-bold' : 'text-2xl font-extrabold tracking-tight'}>
+            {embedded ? 'Live rider map' : 'Live Map'}
+          </h2>
           <p className="text-sm text-slate-400">
             {located.length} rider{located.length === 1 ? '' : 's'} broadcasting
             {inTransit > 0 ? ` · ${inTransit} en route` : ''} · last 10 minutes
@@ -241,7 +243,7 @@ export default function LiveMap() {
       {error && located.length === 0 ? (
         <div className="card text-sm text-red-400">{error}</div>
       ) : (
-        <div className="relative h-[calc(100vh-220px)] min-h-[420px] overflow-hidden rounded-2xl border dark:border-ink-700">
+        <div className={`relative ${embedded ? 'h-[480px]' : 'h-[calc(100vh-220px)] min-h-[420px]'} overflow-hidden rounded-2xl border dark:border-ink-700`}>
           <MapContainer
             center={SL_CENTER}
             zoom={SL_ZOOM}

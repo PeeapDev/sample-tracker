@@ -3,6 +3,7 @@ import { RefreshCw, Truck, PackageOpen } from 'lucide-react'
 import { api, apiError } from '../lib/api'
 import { getCache, setCache, hasCache } from '../lib/cache'
 import { cn } from '../lib/ui'
+import { DispatchDetailModal } from '../components/DispatchDetailModal'
 
 interface DispatchRow {
   id: string
@@ -33,6 +34,7 @@ export default function Dispatches() {
   const [loading, setLoading] = useState(!hasCache('dispatches'))
   const [refreshing, setRefreshing] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [openId, setOpenId] = useState<string | null>(null)
 
   async function load() {
     setRefreshing(true)
@@ -101,7 +103,11 @@ export default function Dispatches() {
               {rows.map((d) => {
                 const color = DISPATCH_COLORS[d.status] ?? '#94A3B8'
                 return (
-                  <tr key={d.id} className="border-b last:border-0 dark:border-ink-700/60">
+                  <tr
+                    key={d.id}
+                    onClick={() => setOpenId(d.id)}
+                    className="cursor-pointer border-b transition-colors last:border-0 hover:bg-slate-50 dark:border-ink-700/60 dark:hover:bg-ink-850/50"
+                  >
                     <td className="px-5 py-3">
                       <div className="flex items-center gap-2.5">
                         <span
@@ -138,6 +144,8 @@ export default function Dispatches() {
           </table>
         </div>
       )}
+
+      {openId && <DispatchDetailModal dispatchId={openId} onClose={() => setOpenId(null)} />}
     </div>
   )
 }

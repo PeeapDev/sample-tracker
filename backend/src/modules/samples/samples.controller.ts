@@ -13,7 +13,6 @@ import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { SamplesService } from './samples.service';
 import {
   CreateSampleDto,
-  UpdateSampleStatusDto,
   ScanSampleDto,
   SampleFilterDto,
   CreateFeedbackDto,
@@ -114,21 +113,8 @@ export class SamplesController {
     return this.samplesService.addFeedback(id, dto, req.user.sub);
   }
 
-  @Patch(':id/status')
-  @Roles(UserRole.DISPATCHER, UserRole.HUB_OFFICER, UserRole.LAB_OFFICER, UserRole.ADMIN)
-  @ApiOperation({ summary: 'Update sample status' })
-  async updateStatus(
-    @Param('id') id: string,
-    @Body() dto: UpdateSampleStatusDto,
-    @Req() req,
-  ) {
-    return this.samplesService.updateStatus(
-      id,
-      dto,
-      req.user.sub,
-      req.user.facilityId,
-    );
-  }
+  // No manual status endpoint by design — a sample's status only advances by
+  // scanning its QR (POST /samples/scan). Loss is the one manual exception below.
 
   @Patch(':id/lost')
   @Roles(UserRole.DISPATCHER, UserRole.HUB_OFFICER, UserRole.LAB_OFFICER, UserRole.ADMIN)

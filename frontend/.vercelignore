@@ -1,11 +1,21 @@
 # Anchored to project root (leading slash) so we never exclude anything under
 # build/web/ — e.g. build/web/assets/ must ship or Flutter white-screens.
+# Everything under build/ EXCEPT build/web is heavy native output (the Android
+# APK/Gradle artifacts blew past Vercel's 100 MB upload limit).
 /.dart_tool/
+/android/
+/ios/
+/macos/
+/linux/
 /windows/
 /test/
 /lib/
 /assets/
+/build/app/
 /build/windows/
+/build/ios/
+/build/macos/
+/build/linux/
 *.iml
 /pubspec.lock
 /analysis_options.yaml

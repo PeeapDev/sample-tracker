@@ -29,7 +29,6 @@ class _SampleDetailScreenState extends State<SampleDetailScreen> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final samples = context.watch<SampleProvider>();
-    final auth = context.watch<AuthProvider>();
     final sample = samples.selectedSample;
 
     if (sample == null) {
@@ -228,30 +227,26 @@ class _SampleDetailScreenState extends State<SampleDetailScreen> {
           ),
           const SizedBox(height: 16),
 
-          if (_canUpdateStatus(auth.role, sample.status)) ...[
+          // Status advances only by scanning the sample at its next stage — no
+          // manual status edits. Show that as a hint while the sample is active.
+          if (sample.status != 'completed' && sample.status != 'lost')
             Card(
               child: Padding(
                 padding: const EdgeInsets.all(16),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                child: Row(
                   children: [
-                    Text('Update Status', style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold)),
-                    const SizedBox(height: 12),
-                    ..._getAvailableActions(auth.role, sample.status).map(
-                      (action) => Padding(
-                        padding: const EdgeInsets.only(bottom: 8),
-                        child: OutlinedButton.icon(
-                          onPressed: () => _handleAction(samples, sample, action['status']!, action['label']!),
-                          icon: Icon(action['icon'] as IconData),
-                          label: Text(action['label'] as String),
-                        ),
+                    Icon(Icons.qr_code_scanner, color: theme.colorScheme.primary),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Text(
+                        'Status advances automatically when this sample is scanned at its next stage.',
+                        style: theme.textTheme.bodyMedium,
                       ),
                     ),
                   ],
                 ),
               ),
             ),
-          ],
         ],
       ),
     );
@@ -347,68 +342,6 @@ class _SampleDetailScreenState extends State<SampleDetailScreen> {
         ],
       ),
     );
-  }
-
-  bool _canUpdateStatus(String role, String status) {
-    if (role == 'admin') return status != 'completed' && status != 'lost';
-    if (role == 'dispatcher' && (status == 'collected' || status == 'picked_up')) return true;
-    if (role == 'hub_officer' && (status == 'picked_up' || status == 'hub_received')) return true;
-    if (role == 'lab_officer' && (status == 'in_transit' || status == 'lab_received')) return true;
-    return false;
-  }
-
-  List<Map<String, dynamic>> _getAvailableActions(String role, String status) {
-    final actions = <Map<String, dynamic>>[];
-    if (role == 'admin' || role == 'dispatcher') {
-      if (status == 'collected') {
-        actions.add({'status': 'picked_up', 'label': 'Confirm Pickup', 'icon': Icons.local_shipping});
-      }
-    }
-    if (role == 'admin' || role == 'hub_officer') {
-      if (status == 'picked_up') {
-        actions.add({'status': 'hub_received', 'label': 'Receive at Hub', 'icon': Icons.warehouse});
-      }
-      if (status == 'hub_received') {
-        actions.add({'status': 'in_transit', 'label': 'Dispatch to Lab', 'icon': Icons.departure_board});
-      }
-    }
-    if (role == 'admin' || role == 'lab_officer') {
-      if (status == 'in_transit') {
-        actions.add({'status': 'lab_received', 'label': 'Receive at Lab', 'icon': Icons.biotech});
-      }
-      if (status == 'lab_received') {
-        actions.add({'status': 'analysis_queue', 'label': 'Queue for Analysis', 'icon': Icons.queue});
-        actions.add({'status': 'completed', 'label': 'Mark Completed', 'icon': Icons.check_circle});
-      }
-    }
-    if (role == 'admin') {
-      actions.add({'status': 'lost', 'label': 'Mark as Lost', 'icon': Icons.report_problem});
-    }
-    return actions;
-  }
-
-  Future<void> _handleAction(SampleProvider samples, SampleModel sample, String status, String label) async {
-    final confirm = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text(label),
-        content: Text('Confirm status change to "$label"?'),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
-          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Confirm')),
-        ],
-      ),
-    );
-
-    if (confirm == true) {
-      final success = await samples.updateStatus(sample.id, status);
-      if (success && mounted) {
-        samples.loadTimeline(widget.sampleId);
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Status updated to $label'), backgroundColor: Colors.green),
-        );
-      }
-    }
   }
 
   Color _eventColor(String event) {

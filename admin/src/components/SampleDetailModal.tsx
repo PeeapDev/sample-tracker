@@ -2,7 +2,6 @@ import { useEffect, useState } from 'react'
 import {
   X,
   Loader2,
-  ArrowRight,
   AlertTriangle,
   CheckCircle2,
   MapPin,
@@ -59,22 +58,6 @@ export function SampleDetailModal({
     const res = await api.get(`/samples/${sampleId}`)
     setSample(res.data)
     await loadTimeline()
-  }
-
-  async function advance() {
-    const cur = String(sample?.status ?? '')
-    const next = NEXT[cur]
-    if (!next) return
-    setBusy(true)
-    setActionError(null)
-    try {
-      await api.patch(`/samples/${sampleId}/status`, { status: next.status })
-      await refresh()
-    } catch (e) {
-      setActionError(apiError(e, 'Failed to advance status'))
-    } finally {
-      setBusy(false)
-    }
   }
 
   async function markLost() {
@@ -352,18 +335,14 @@ export function SampleDetailModal({
 
               {canManage && (
                 <div className="mt-6 flex flex-wrap items-center gap-2 border-t pt-4 dark:border-ink-700">
-                  {NEXT[String(s.status)] ? (
-                    <button onClick={advance} disabled={busy} className="btn-primary">
-                      {busy ? (
-                        <Loader2 size={16} className="animate-spin" />
-                      ) : (
-                        <ArrowRight size={16} />
-                      )}
-                      Advance to {NEXT[String(s.status)].label}
-                    </button>
-                  ) : String(s.status) === 'completed' ? (
+                  {String(s.status) === 'completed' ? (
                     <span className="inline-flex items-center gap-2 text-sm font-semibold text-emerald-500">
                       <CheckCircle2 size={16} /> Journey complete
+                    </span>
+                  ) : String(s.status) !== 'lost' && NEXT[String(s.status)] ? (
+                    // Status advances only by scanning the sample's QR — no manual edits.
+                    <span className="inline-flex items-center gap-2 text-sm text-slate-400">
+                      <ScanLine size={16} /> Advances to {NEXT[String(s.status)].label} when scanned
                     </span>
                   ) : null}
                   {String(s.status) !== 'completed' && String(s.status) !== 'lost' && (

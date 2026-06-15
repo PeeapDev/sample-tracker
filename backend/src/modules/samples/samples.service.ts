@@ -333,6 +333,9 @@ export class SamplesService {
     );
 
     await this.sendStatusNotification(sample.sampleId, dto.status, sample.id);
+    if (dto.status === SampleStatus.COMPLETED) {
+      await this.notifyResultsReady(sample);
+    }
 
     return this.findById(id);
   }
@@ -402,6 +405,9 @@ export class SamplesService {
       coords,
     );
     await this.notifyParties(sample, step.next, actor, coords);
+    if (step.next === SampleStatus.COMPLETED) {
+      await this.notifyResultsReady(sample);
+    }
 
     return {
       sample: await this.findById(sample.id),
@@ -748,6 +754,42 @@ export class SamplesService {
         Math.cos((bLat * Math.PI) / 180) *
         Math.sin(dLng / 2) ** 2;
     return 2 * R * Math.asin(Math.sqrt(s));
+  }
+
+  /**
+   * Testing is done — tell the people who care that results are ready: a
+   * broadcast for dashboards, plus a direct alert to the collector who
+   * registered the sample and everyone at its origin facility (the site the
+   * sample came from, which is waiting on the result).
+   */
+  private async notifyResultsReady(sample: Sample): Promise<void> {
+    const base: CreateNotificationInput = {
+      // Reuse LAB_ARRIVAL (results are produced at the lab) — avoids a DB enum
+      // migration in production where synchronize is off. The title carries the
+      // real meaning.
+      type: NotificationType.LAB_ARRIVAL,
+      title: 'Results Ready',
+      message: `Testing complete — results for sample ${sample.sampleId} are ready.`,
+      sampleId: sample.id,
+      metadata: { status: SampleStatus.COMPLETED, facilityId: sample.facilityId },
+    };
+
+    const recipients = new Set<string>();
+    if (sample.collectedById) recipients.add(sample.collectedById);
+    if (sample.facilityId) {
+      const facilityUsers = await this.sampleRepository.manager.find(User, {
+        where: { facilityId: sample.facilityId },
+        select: { id: true },
+      });
+      facilityUsers.forEach((u) => recipients.add(u.id));
+    }
+
+    await Promise.all([
+      this.notificationsService.createNotification(base), // broadcast for dashboards
+      ...[...recipients].map((userId) =>
+        this.notificationsService.createNotification({ ...base, userId }),
+      ),
+    ]);
   }
 
   private async sendStatusNotification(
