@@ -58,6 +58,20 @@ export class Sample {
   @Column({ nullable: true })
   collectedById: string;
 
+  // Immutable snapshot of the person who first collected/registered this sample,
+  // captured at creation and tied to the sample's origin. Unlike the collectedBy
+  // relation (which reflects the user's *current* record), these never change —
+  // so even if that account is edited, renamed, or replaced, the origin always
+  // shows who originally collected it.
+  @Column({ nullable: true })
+  collectorName: string;
+
+  @Column({ nullable: true })
+  collectorRole: string;
+
+  @Column({ nullable: true })
+  collectorPhone: string;
+
   @ManyToOne(() => Facility, { nullable: true, eager: true })
   @JoinColumn({ name: 'facilityId' })
   facility: Facility;

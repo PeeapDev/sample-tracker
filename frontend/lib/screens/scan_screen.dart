@@ -3,6 +3,7 @@ import 'package:geolocator/geolocator.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 import 'package:provider/provider.dart';
 import '../providers/sample_provider.dart';
+import '../providers/parcel_provider.dart';
 import '../providers/auth_provider.dart';
 import 'sample_detail_screen.dart';
 
@@ -82,6 +83,100 @@ class _ScanScreenState extends State<ScanScreen> {
     }
   }
 
+  /// Parcel scan-to-advance (PCL-…). Tries to advance; if the backend refuses
+  /// (wrong role / terminal), falls back to showing the parcel read-only.
+  Future<void> _handleParcel(String code) async {
+    setState(() => _processing = true);
+    final parcels = context.read<ParcelProvider>();
+    final pos = await _currentPosition();
+
+    final result = await parcels.scanAdvance(
+      code,
+      latitude: pos?.latitude,
+      longitude: pos?.longitude,
+    );
+
+    if (!mounted) return;
+
+    if (result != null) {
+      setState(() => _processing = false);
+      _manualController.clear();
+      _showParcelResult(result, pos);
+      return;
+    }
+
+    // Advance failed — show the parcel read-only with the reason, if we can.
+    final reason = parcels.error;
+    final parcel = await parcels.lookupParcel(code);
+    if (!mounted) return;
+    setState(() => _processing = false);
+
+    if (parcel != null) {
+      _manualController.clear();
+      _showParcelResult({'parcel': parcel, 'message': reason ?? 'No change made.'}, pos);
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(reason ?? 'Parcel scan failed.'),
+          backgroundColor: Colors.red.shade700,
+        ),
+      );
+      _lastCode = null;
+    }
+  }
+
+  void _showParcelResult(Map<String, dynamic> result, Position? pos) {
+    final parcel = result['parcel'] as Map<String, dynamic>?;
+    final code = parcel?['parcelId']?.toString() ?? '';
+    final type = (parcel?['type']?.toString() ?? '').replaceAll('_', ' ');
+    final newStatus = (result['newStatus']?.toString() ??
+            parcel?['status']?.toString() ??
+            '')
+        .replaceAll('_', ' ');
+    final dest = parcel?['destinationFacility']?['name'] as String?;
+    final msg = result['message']?.toString() ?? 'Parcel updated.';
+
+    showDialog(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: Row(
+          children: [
+            Icon(Icons.local_shipping, color: Colors.green.shade600),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(code.isEmpty ? 'Parcel' : code,
+                  style: const TextStyle(fontFamily: 'monospace', fontSize: 16)),
+            ),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(msg),
+            const SizedBox(height: 12),
+            _resultRow(Icons.category, 'Type', type.isEmpty ? '—' : type),
+            _resultRow(Icons.flag, 'Status', newStatus.isEmpty ? '—' : newStatus),
+            _resultRow(Icons.location_city, 'Destination', dest ?? 'Unknown'),
+            _resultRow(
+              Icons.place,
+              'Location',
+              pos != null
+                  ? '${pos.latitude.toStringAsFixed(4)}, ${pos.longitude.toStringAsFixed(4)}'
+                  : 'Not available',
+            ),
+          ],
+        ),
+        actions: [
+          FilledButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Done'),
+          ),
+        ],
+      ),
+    );
+  }
+
   /// Best-effort GPS — returns null if unavailable or denied (scan still works).
   Future<Position?> _currentPosition() async {
     try {
@@ -103,7 +198,14 @@ class _ScanScreenState extends State<ScanScreen> {
     final code = rawCode.trim();
     if (code.isEmpty || _processing) return;
 
-    // Collectors (and any non-advancing role) can only view, not advance.
+    // A PCL- code is a return parcel (letters/supplies from the center). The
+    // backend enforces who may advance each stage, so we attempt it for any
+    // scanning role (e.g. a collector confirming delivery at the facility).
+    if (code.toUpperCase().startsWith('PCL-')) {
+      return _handleParcel(code);
+    }
+
+    // Collectors (and any non-advancing role) can only view samples, not advance.
     if (!_canAdvance) return _lookupCode(code);
 
     setState(() => _processing = true);

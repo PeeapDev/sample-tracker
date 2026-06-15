@@ -60,6 +60,9 @@ class SampleModel {
   final String? notes;
   final String? qrCode;
   final Map<String, dynamic>? collectedBy;
+  final String? collectorName;
+  final String? collectorRole;
+  final String? collectorPhone;
   final Map<String, dynamic>? facility;
   final Map<String, dynamic>? dispatcher;
   final String? dispatchId;
@@ -84,6 +87,9 @@ class SampleModel {
     this.notes,
     this.qrCode,
     this.collectedBy,
+    this.collectorName,
+    this.collectorRole,
+    this.collectorPhone,
     this.facility,
     this.dispatcher,
     this.dispatchId,
@@ -110,6 +116,9 @@ class SampleModel {
       notes: json['notes'],
       qrCode: json['qrCode'],
       collectedBy: json['collectedBy'],
+      collectorName: json['collectorName'],
+      collectorRole: json['collectorRole'],
+      collectorPhone: json['collectorPhone'],
       facility: json['facility'],
       dispatcher: json['dispatcher'],
       dispatchId: json['dispatchId'],

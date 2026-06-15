@@ -619,14 +619,12 @@ function RegisterParcelModal({
   onCreated: (p: ParcelRow) => void
 }) {
   const [facilities, setFacilities] = useState<{ id: string; name: string; type: string }[]>([])
-  const [riders, setRiders] = useState<{ id: string; firstName?: string; lastName?: string }[]>([])
   const [form, setForm] = useState({
     type: 'letter',
     description: '',
     quantity: '1',
     originFacilityId: '',
     destinationFacilityId: '',
-    riderId: '',
     notes: '',
   })
   const [busy, setBusy] = useState(false)
@@ -640,16 +638,6 @@ function RegisterParcelModal({
         setFacilities(list)
       })
       .catch((e) => setError(apiError(e, 'Could not load facilities')))
-    api
-      .get('/users', { params: { role: 'dispatcher' } })
-      .then((res) => {
-        const list = res.data?.data ?? res.data ?? []
-        const arr = Array.isArray(list) ? list : []
-        setRiders(arr.filter((u: any) => u.role === 'dispatcher'))
-      })
-      .catch(() => {
-        /* riders optional */
-      })
   }, [])
 
   function set(key: keyof typeof form, v: string) {
@@ -672,7 +660,6 @@ function RegisterParcelModal({
       if (form.description.trim()) payload.description = form.description.trim()
       if (form.quantity.trim()) payload.quantity = Number(form.quantity) || 1
       if (form.originFacilityId) payload.originFacilityId = form.originFacilityId
-      if (form.riderId) payload.riderId = form.riderId
       if (form.notes.trim()) payload.notes = form.notes.trim()
       const res = await api.post('/parcels', payload)
       onCreated(res.data)
@@ -692,7 +679,7 @@ function RegisterParcelModal({
         <div className="mb-5 flex items-start justify-between">
           <div>
             <h3 className="text-lg font-extrabold">Register Parcel</h3>
-            <p className="text-sm text-slate-400">Log return cargo for a rider — a QR is generated on save</p>
+            <p className="text-sm text-slate-400">Log return cargo — a QR is generated on save. Any rider claims it by scanning before they move it.</p>
           </div>
           <button type="button" onClick={onClose} className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 dark:hover:bg-ink-800">
             <X size={18} />
@@ -748,16 +735,6 @@ function RegisterParcelModal({
               {facilities.map((f) => (
                 <option key={f.id} value={f.id}>
                   {f.name}
-                </option>
-              ))}
-            </select>
-          </Field>
-          <Field label="Rider (optional)" full>
-            <select className="input" value={form.riderId} onChange={(e) => set('riderId', e.target.value)}>
-              <option value="">— Unassigned</option>
-              {riders.map((r) => (
-                <option key={r.id} value={r.id}>
-                  {`${r.firstName ?? ''} ${r.lastName ?? ''}`.trim() || r.id}
                 </option>
               ))}
             </select>

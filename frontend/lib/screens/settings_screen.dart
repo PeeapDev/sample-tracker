@@ -4,6 +4,7 @@ import '../providers/auth_provider.dart';
 import '../providers/notification_provider.dart';
 import 'profile_screen.dart';
 import 'notifications_screen.dart';
+import 'parcels_screen.dart';
 import 'user_management_screen.dart';
 
 /// Settings hub — the home for everything that used to clutter the bottom nav
@@ -90,6 +91,13 @@ class SettingsScreen extends StatelessWidget {
                 Text(unread > 0 ? '$unread unread' : 'Notifications & updates'),
             trailing: const Icon(Icons.chevron_right),
             onTap: () => _push(context, const NotificationsScreen()),
+          ),
+          ListTile(
+            leading: const Icon(Icons.local_shipping_outlined),
+            title: const Text('Return Parcels'),
+            subtitle: const Text('Letters & supplies sent back from the center'),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: () => _push(context, const ParcelsScreen()),
           ),
           if (isAdmin)
             ListTile(

@@ -13,6 +13,8 @@ const Users = lazy(() => import('./pages/Users'))
 const Samples = lazy(() => import('./pages/Samples'))
 const Scan = lazy(() => import('./pages/Scan'))
 const Dispatches = lazy(() => import('./pages/Dispatches'))
+const Parcels = lazy(() => import('./pages/Parcels'))
+const LiveMap = lazy(() => import('./pages/LiveMap'))
 const Batches = lazy(() => import('./pages/Batches'))
 const ShelfScanning = lazy(() => import('./pages/ShelfScanning'))
 const Facilities = lazy(() => import('./pages/Facilities'))
@@ -92,6 +94,26 @@ export default function App() {
             <RequirePerm perm="dispatches.view">
               <Suspense fallback={<PageSpinner />}>
                 <Dispatches />
+              </Suspense>
+            </RequirePerm>
+          }
+        />
+        <Route
+          path="/parcels"
+          element={
+            <RequirePerm perm="samples.view">
+              <Suspense fallback={<PageSpinner />}>
+                <Parcels />
+              </Suspense>
+            </RequirePerm>
+          }
+        />
+        <Route
+          path="/live-map"
+          element={
+            <RequirePerm perm="samples.view">
+              <Suspense fallback={<PageSpinner />}>
+                <LiveMap />
               </Suspense>
             </RequirePerm>
           }

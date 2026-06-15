@@ -6,6 +6,8 @@ import {
   FlaskConical,
   TestTubes,
   Truck,
+  Package,
+  Map as MapIcon,
   Boxes,
   Building2,
   ShieldCheck,
@@ -31,6 +33,9 @@ interface NavItem {
   label: string
   icon: ComponentType<{ size?: number }>
   perm: string
+  // Optional explicit role allowlist when a single permission doesn't capture
+  // exactly who should see the item (admin always sees everything).
+  roles?: string[]
   end?: boolean
   section: 'main' | 'admin'
 }
@@ -40,6 +45,15 @@ const NAV: NavItem[] = [
   { to: '/samples', label: 'Samples', icon: TestTubes, perm: 'samples.view', section: 'main' },
   { to: '/scan', label: 'Scan Sample', icon: QrCode, perm: 'samples.scan', section: 'main' },
   { to: '/dispatches', label: 'Dispatches', icon: Truck, perm: 'dispatches.view', section: 'main' },
+  { to: '/parcels', label: 'Parcels', icon: Package, perm: 'samples.view', section: 'main' },
+  {
+    to: '/live-map',
+    label: 'Live Map',
+    icon: MapIcon,
+    perm: 'dispatches.view',
+    roles: ['admin', 'dispatcher', 'hub_officer', 'lab_officer'],
+    section: 'main',
+  },
   { to: '/batches', label: 'Batches & Boxes', icon: Boxes, perm: 'samples.view', section: 'main' },
   { to: '/users', label: 'Users', icon: UsersIcon, perm: 'users.view', section: 'main' },
   { to: '/facilities', label: 'Facilities & Hubs', icon: Building2, perm: 'settings.manage', section: 'admin' },
@@ -52,6 +66,8 @@ const TITLES: Record<string, string> = {
   '/samples': 'Samples',
   '/scan': 'Scan a Sample',
   '/dispatches': 'Dispatches',
+  '/parcels': 'Parcels',
+  '/live-map': 'Live Map',
   '/batches': 'Batches & Boxes',
   '/shelf': 'Shelf Scanning',
   '/users': 'User Management',
@@ -74,7 +90,10 @@ export default function AdminLayout() {
   const meta = roleMeta(user?.role ?? '')
   const isSuper = user?.role === 'admin'
 
-  const visible = NAV.filter((n) => can(user?.role ?? '', n.perm))
+  const role = user?.role ?? ''
+  const visible = NAV.filter(
+    (n) => can(role, n.perm) && (!n.roles || role === 'admin' || n.roles.includes(role)),
+  )
   const mainItems = visible.filter((n) => n.section === 'main')
   const adminItems = visible.filter((n) => n.section === 'admin')
 

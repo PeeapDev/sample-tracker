@@ -10,9 +10,10 @@ import {
   Printer,
   Building2,
   Boxes,
+  UserRound,
 } from 'lucide-react'
 import { api, apiError } from '../lib/api'
-import { statusColor, statusLabel } from '../lib/ui'
+import { statusColor, statusLabel, roleMeta } from '../lib/ui'
 import { useAuth } from '../lib/auth'
 import { useRbac } from '../lib/rbac'
 import { SampleTracker } from './SampleTracker'
@@ -205,6 +206,40 @@ export function SampleDetailModal({
                 </div>
               </div>
 
+              {/* Origin collector — an immutable snapshot taken at collection. */}
+              {(s.collectorName || s.collectedBy) && (
+                <div className="mb-5 rounded-xl border p-3.5 dark:border-ink-700">
+                  <div className="mb-2 flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-slate-400">
+                    <UserRound size={14} /> Origin — collected by
+                  </div>
+                  <div className="grid grid-cols-2 gap-x-6 gap-y-2 sm:grid-cols-3">
+                    <Detail
+                      label="Name"
+                      value={
+                        s.collectorName ||
+                        (s.collectedBy
+                          ? `${s.collectedBy.firstName ?? ''} ${s.collectedBy.lastName ?? ''}`.trim()
+                          : '—')
+                      }
+                    />
+                    <Detail
+                      label="Role"
+                      value={
+                        s.collectorRole
+                          ? roleMeta(String(s.collectorRole)).label
+                          : s.collectedBy?.role
+                            ? roleMeta(String(s.collectedBy.role)).label
+                            : '—'
+                      }
+                    />
+                    <Detail label="Phone" value={s.collectorPhone || s.collectedBy?.phone || '—'} />
+                  </div>
+                  <div className="mt-2 text-[11px] text-slate-400">
+                    Captured at collection — fixed to this sample's origin, even if the account changes.
+                  </div>
+                </div>
+              )}
+
               <div className="mb-2 text-xs font-semibold uppercase tracking-wider text-slate-400">
                 Journey
               </div>
@@ -243,10 +278,6 @@ export function SampleDetailModal({
                   value={[s.patientAge && `${s.patientAge}y`, s.patientGender].filter(Boolean).join(', ') || '—'}
                 />
                 <Detail label="Facility" value={s.facility?.name ?? '—'} />
-                <Detail
-                  label="Collected by"
-                  value={s.collectedBy ? `${s.collectedBy.firstName ?? ''} ${s.collectedBy.lastName ?? ''}`.trim() : '—'}
-                />
                 <Detail
                   label="Registered"
                   value={s.createdAt ? new Date(s.createdAt).toLocaleString() : '—'}

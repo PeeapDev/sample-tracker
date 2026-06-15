@@ -12,6 +12,7 @@ import { Sample } from '../../database/entities/sample.entity';
 import { EventLog } from '../../database/entities/event-log.entity';
 import { Batch } from '../../database/entities/batch.entity';
 import { Facility } from '../../database/entities/facility.entity';
+import { User } from '../../database/entities/user.entity';
 import { SampleStatus, UserRole, NotificationType } from '../../database/enums';
 import {
   CreateSampleDto,
@@ -85,11 +86,24 @@ export class SamplesService {
 
     const qrCode = await QRCode.toDataURL(sampleId);
 
+    // Snapshot the collector at creation so the origin keeps the original
+    // person's name/role/phone even if that account later changes.
+    const collector = await this.sampleRepository.manager.findOne(User, {
+      where: { id: userId },
+      select: { id: true, firstName: true, lastName: true, role: true, phone: true },
+    });
+    const collectorName = collector
+      ? `${collector.firstName ?? ''} ${collector.lastName ?? ''}`.trim() || null
+      : null;
+
     const sample = this.sampleRepository.create({
       ...dto,
       sampleId,
       qrCode,
       collectedById: userId,
+      collectorName,
+      collectorRole: collector?.role ?? null,
+      collectorPhone: collector?.phone ?? null,
       collectedAt: dto.collectedAt ? new Date(dto.collectedAt) : new Date(),
       status: SampleStatus.COLLECTED,
     });

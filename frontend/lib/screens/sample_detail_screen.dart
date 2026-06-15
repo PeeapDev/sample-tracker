@@ -171,6 +171,41 @@ class _SampleDetailScreenState extends State<SampleDetailScreen> {
           ),
           const SizedBox(height: 16),
 
+          if (_hasOrigin(sample)) ...[
+            Card(
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Icon(Icons.person_pin_circle, color: theme.colorScheme.primary, size: 20),
+                        const SizedBox(width: 8),
+                        Text('Origin — Collected By', style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold)),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    _infoRow('Name', _originName(sample) ?? '—'),
+                    if (sample.collectorRole != null)
+                      _infoRow('Role', _humanizeRole(sample.collectorRole!)),
+                    if (sample.collectorPhone != null)
+                      _infoRow('Phone', sample.collectorPhone!),
+                    const SizedBox(height: 8),
+                    Text(
+                      'Captured at collection — fixed to this sample\'s origin.',
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: theme.colorScheme.onSurfaceVariant,
+                        fontStyle: FontStyle.italic,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(height: 16),
+          ],
+
           Card(
             child: Padding(
               padding: const EdgeInsets.all(16),
@@ -220,6 +255,39 @@ class _SampleDetailScreenState extends State<SampleDetailScreen> {
         ],
       ),
     );
+  }
+
+  bool _hasOrigin(SampleModel sample) =>
+      _originName(sample) != null ||
+      sample.collectorRole != null ||
+      sample.collectorPhone != null;
+
+  // Prefer the immutable snapshot name; fall back to the live collectedBy user.
+  String? _originName(SampleModel sample) {
+    if (sample.collectorName != null && sample.collectorName!.isNotEmpty) {
+      return sample.collectorName;
+    }
+    if (sample.collectedBy != null) {
+      final name = '${sample.collectedBy!['firstName'] ?? ''} ${sample.collectedBy!['lastName'] ?? ''}'.trim();
+      if (name.isNotEmpty) return name;
+    }
+    return null;
+  }
+
+  String _humanizeRole(String role) {
+    switch (role) {
+      case 'admin': return 'Administrator';
+      case 'collector': return 'Sample Collector';
+      case 'dispatcher': return 'Dispatcher';
+      case 'hub_officer': return 'Hub Officer';
+      case 'lab_officer': return 'Lab Officer';
+      default:
+        return role
+            .split('_')
+            .where((w) => w.isNotEmpty)
+            .map((w) => w[0].toUpperCase() + w.substring(1))
+            .join(' ');
+    }
   }
 
   Widget _infoRow(String label, String value) {
