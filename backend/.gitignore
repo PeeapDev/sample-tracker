@@ -1,1 +1,5 @@
 .vercel
+
+api/*.js
+api/*.d.ts
+api/*.map
