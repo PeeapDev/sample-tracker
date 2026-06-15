@@ -12,6 +12,7 @@ export const PERMISSIONS: Permission[] = [
   { key: 'dashboard.view', label: 'View dashboard & analytics', group: 'Dashboard' },
   { key: 'samples.view', label: 'View samples', group: 'Samples' },
   { key: 'samples.manage', label: 'Register & update samples', group: 'Samples' },
+  { key: 'samples.scan', label: 'Scan samples (camera/QR)', group: 'Samples' },
   { key: 'dispatches.view', label: 'View dispatches', group: 'Dispatches' },
   { key: 'dispatches.manage', label: 'Create & update dispatches', group: 'Dispatches' },
   { key: 'users.view', label: 'View users', group: 'Users' },
@@ -39,10 +40,10 @@ export type Matrix = Record<string, string[]>
 
 const DEFAULT_MATRIX: Matrix = {
   admin: PERMISSIONS.map((p) => p.key),
-  collector: ['dashboard.view', 'samples.view', 'samples.manage'],
-  dispatcher: ['dashboard.view', 'samples.view', 'dispatches.view', 'dispatches.manage'],
-  hub_officer: ['dashboard.view', 'samples.view', 'dispatches.view'],
-  lab_officer: ['dashboard.view', 'samples.view'],
+  collector: ['dashboard.view', 'samples.view', 'samples.manage', 'samples.scan'],
+  dispatcher: ['dashboard.view', 'samples.view', 'samples.scan', 'dispatches.view', 'dispatches.manage'],
+  hub_officer: ['dashboard.view', 'samples.view', 'samples.scan', 'dispatches.view'],
+  lab_officer: ['dashboard.view', 'samples.view', 'samples.scan'],
 }
 
 interface RbacState {

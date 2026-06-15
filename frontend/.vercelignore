@@ -1,0 +1,12 @@
+# Anchored to project root (leading slash) so we never exclude anything under
+# build/web/ — e.g. build/web/assets/ must ship or Flutter white-screens.
+/.dart_tool/
+/windows/
+/test/
+/lib/
+/assets/
+/build/windows/
+*.iml
+/pubspec.lock
+/analysis_options.yaml
+/serve_web.js

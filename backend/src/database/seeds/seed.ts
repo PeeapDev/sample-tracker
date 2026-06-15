@@ -1,6 +1,6 @@
 import 'dotenv/config';
 import { DataSource } from 'typeorm';
-import * as bcrypt from 'bcrypt';
+import * as bcrypt from 'bcryptjs';
 import { Facility } from '../entities/facility.entity';
 import { User } from '../entities/user.entity';
 import { UserRole } from '../enums';

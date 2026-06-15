@@ -11,6 +11,10 @@
   <link rel="manifest" href="manifest.json">
   <link rel="apple-touch-icon" href="icons/icon-192.png">
   <title>NSRTMS - Sample Tracking System</title>
+  <!-- mobile_scanner uses ZXing to read barcodes in the browser (camera scan on
+       phones). Required for the camera-mode scanner on the web build. Vendored
+       locally (instead of a CDN) so the field PWA stays self-contained. -->
+  <script src="zxing.min.js" type="application/javascript"></script>
   <script>
     if ('serviceWorker' in navigator) {
       window.addEventListener('load', function() {

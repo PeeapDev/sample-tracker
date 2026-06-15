@@ -9,7 +9,13 @@ import 'sample_detail_screen.dart';
 /// Scan-to-advance screen. A scan (camera or manual) sends the sample to the
 /// role-aware backend, which moves it to its next stage and logs GPS + time.
 class ScanScreen extends StatefulWidget {
-  const ScanScreen({super.key});
+  const ScanScreen({super.key, this.acceptMode = false});
+
+  /// Launched from the "Accept" action: open straight into the camera and frame
+  /// the flow as accepting/receiving a sample at this centre. The underlying
+  /// scan-to-advance is identical — for a receiving officer it lands the sample
+  /// in its "received" state and confirms the location.
+  final bool acceptMode;
 
   @override
   State<ScanScreen> createState() => _ScanScreenState();
@@ -22,9 +28,58 @@ class _ScanScreenState extends State<ScanScreen> {
   String? _lastCode; // de-dupe rapid repeat detections
 
   @override
+  void initState() {
+    super.initState();
+    // Accept = scan to receive: jump straight to the camera.
+    _cameraMode = widget.acceptMode;
+  }
+
+  /// Roles that can scan-to-advance. Everyone else (e.g. collectors) can still
+  /// scan, but only to look a sample up — they can't move it to the next stage.
+  bool get _canAdvance {
+    final role = context.read<AuthProvider>().role;
+    return role == 'dispatcher' ||
+        role == 'hub_officer' ||
+        role == 'lab_officer' ||
+        role == 'admin';
+  }
+
+  @override
   void dispose() {
     _manualController.dispose();
     super.dispose();
+  }
+
+  /// Look-up-only path for roles that can't advance: scan/enter a code, open
+  /// the sample's details. Nothing changes server-side.
+  Future<void> _lookupCode(String rawCode) async {
+    final code = rawCode.trim();
+    if (code.isEmpty || _processing) return;
+    setState(() => _processing = true);
+
+    final provider = context.read<SampleProvider>();
+    final sample = await provider.scanSample(code);
+
+    if (!mounted) return;
+    setState(() => _processing = false);
+
+    if (sample != null) {
+      _manualController.clear();
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => SampleDetailScreen(sampleId: sample.id),
+        ),
+      );
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(provider.error ?? 'Sample not found.'),
+          backgroundColor: Colors.red.shade700,
+        ),
+      );
+      _lastCode = null; // allow retry of the same code after an error
+    }
   }
 
   /// Best-effort GPS — returns null if unavailable or denied (scan still works).
@@ -47,6 +102,10 @@ class _ScanScreenState extends State<ScanScreen> {
   Future<void> _handleCode(String rawCode) async {
     final code = rawCode.trim();
     if (code.isEmpty || _processing) return;
+
+    // Collectors (and any non-advancing role) can only view, not advance.
+    if (!_canAdvance) return _lookupCode(code);
+
     setState(() => _processing = true);
 
     final provider = context.read<SampleProvider>();
@@ -263,7 +322,7 @@ class _ScanScreenState extends State<ScanScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Scan Sample'),
+        title: Text(widget.acceptMode ? 'Accept Sample' : 'Scan Sample'),
         actions: [
           IconButton(
             tooltip: _cameraMode ? 'Manual entry' : 'Use camera',
@@ -277,7 +336,12 @@ class _ScanScreenState extends State<ScanScreen> {
         child: Column(
           children: [
             Text(
-              'Scan a sample QR to advance it — or a box (BOX-…) to advance the whole package',
+              !_canAdvance
+                  ? 'Scan a sample QR to view its details and current status'
+                  : widget.acceptMode
+                      ? 'Scan the sample — or a box (BOX-…) — to accept it here. '
+                          'Its arrival at this centre is confirmed and all parties are notified.'
+                      : 'Scan a sample QR to advance it — or a box (BOX-…) to advance the whole package',
               textAlign: TextAlign.center,
               style: theme.textTheme.bodyMedium
                   ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
@@ -323,6 +387,9 @@ class _ScanScreenState extends State<ScanScreen> {
               _lastCode = code;
               _handleCode(code);
             },
+            // On mobile web the camera fails if permission is denied or the page
+            // isn't served over HTTPS — show why and let them switch to manual.
+            errorBuilder: (context, error, child) => _buildCameraError(error),
           ),
           // viewfinder frame
           Center(
@@ -336,6 +403,44 @@ class _ScanScreenState extends State<ScanScreen> {
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  /// Friendly fallback when the camera can't start (denied permission, no
+  /// camera, or an insecure-context browser). Common on phones using the web app.
+  Widget _buildCameraError(MobileScannerException error) {
+    return Container(
+      color: Colors.black87,
+      padding: const EdgeInsets.all(24),
+      child: Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(Icons.no_photography, color: Colors.white70, size: 56),
+            const SizedBox(height: 16),
+            const Text(
+              "Couldn't start the camera",
+              style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 16,
+                  fontWeight: FontWeight.w600),
+            ),
+            const SizedBox(height: 8),
+            const Text(
+              'Allow camera access for this site. On a phone the page must be '
+              'opened over HTTPS for the camera to work.',
+              textAlign: TextAlign.center,
+              style: TextStyle(color: Colors.white70, fontSize: 13),
+            ),
+            const SizedBox(height: 20),
+            FilledButton.icon(
+              onPressed: () => setState(() => _cameraMode = false),
+              icon: const Icon(Icons.keyboard),
+              label: const Text('Enter ID manually'),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -372,35 +477,25 @@ class _ScanScreenState extends State<ScanScreen> {
             onPressed: _processing
                 ? null
                 : () => _handleCode(_manualController.text),
-            icon: const Icon(Icons.bolt),
-            label: const Text('Scan & Advance'),
+            icon: Icon(_canAdvance ? Icons.bolt : Icons.search),
+            label: Text(_canAdvance ? 'Scan & Advance' : 'Look up sample'),
             style: FilledButton.styleFrom(
               padding:
                   const EdgeInsets.symmetric(horizontal: 32, vertical: 16),
             ),
           ),
-          const SizedBox(height: 12),
-          TextButton.icon(
-            onPressed: _processing
-                ? null
-                : () async {
-                    final code = _manualController.text.trim();
-                    if (code.isEmpty) return;
-                    final provider = context.read<SampleProvider>();
-                    final sample = await provider.scanSample(code);
-                    if (sample != null && mounted) {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (_) =>
-                              SampleDetailScreen(sampleId: sample.id),
-                        ),
-                      );
-                    }
-                  },
-            icon: const Icon(Icons.search),
-            label: const Text('Just look up (no change)'),
-          ),
+          // For advancing roles, offer a read-only look-up too. Non-advancing
+          // roles already look up by default, so this would be redundant.
+          if (_canAdvance) ...[
+            const SizedBox(height: 12),
+            TextButton.icon(
+              onPressed: _processing
+                  ? null
+                  : () => _lookupCode(_manualController.text),
+              icon: const Icon(Icons.search),
+              label: const Text('Just look up (no change)'),
+            ),
+          ],
         ],
       ),
     );

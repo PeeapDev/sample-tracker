@@ -11,6 +11,7 @@ import * as QRCode from 'qrcode';
 import { Sample } from '../../database/entities/sample.entity';
 import { EventLog } from '../../database/entities/event-log.entity';
 import { Batch } from '../../database/entities/batch.entity';
+import { Facility } from '../../database/entities/facility.entity';
 import { SampleStatus, UserRole, NotificationType } from '../../database/enums';
 import {
   CreateSampleDto,
@@ -18,7 +19,10 @@ import {
   ScanSampleDto,
   SampleFilterDto,
 } from './dto/sample.dto';
-import { NotificationsService } from '../notifications/notifications.service';
+import {
+  NotificationsService,
+  CreateNotificationInput,
+} from '../notifications/notifications.service';
 
 interface ScanActor {
   sub: string;
@@ -41,6 +45,29 @@ const SCAN_FLOW: Partial<Record<SampleStatus, { role: UserRole; next: SampleStat
   [SampleStatus.IN_TRANSIT]: { role: UserRole.LAB_OFFICER, next: SampleStatus.LAB_RECEIVED },
   [SampleStatus.LAB_RECEIVED]: { role: UserRole.LAB_OFFICER, next: SampleStatus.ANALYSIS_QUEUE },
   [SampleStatus.ANALYSIS_QUEUE]: { role: UserRole.LAB_OFFICER, next: SampleStatus.COMPLETED },
+};
+
+// The custody hand-off points worth telling everyone about: a sample has been
+// accepted/received somewhere new. Other transitions (in-transit, queued,
+// completed) don't fire an "accepted at" alert.
+const SCAN_NOTIFICATIONS: Partial<
+  Record<SampleStatus, { type: NotificationType; title: string; message: string }>
+> = {
+  [SampleStatus.PICKED_UP]: {
+    type: NotificationType.SAMPLE_PICKED_UP,
+    title: 'Sample Picked Up',
+    message: 'Picked up by the dispatcher.',
+  },
+  [SampleStatus.HUB_RECEIVED]: {
+    type: NotificationType.HUB_ARRIVAL,
+    title: 'Sample Accepted at Hub',
+    message: 'Accepted at the hub.',
+  },
+  [SampleStatus.LAB_RECEIVED]: {
+    type: NotificationType.LAB_ARRIVAL,
+    title: 'Sample Accepted at Lab',
+    message: 'Accepted at the laboratory.',
+  },
 };
 
 @Injectable()
@@ -321,7 +348,7 @@ export class SamplesService {
       { notes: dto.notes, previousStatus: sample.status, scanned: true },
       coords,
     );
-    await this.sendStatusNotification(sample.sampleId, step.next, sample.id);
+    await this.notifyParties(sample, step.next, actor, coords);
 
     return {
       sample: await this.findById(sample.id),
@@ -462,6 +489,64 @@ export class SamplesService {
       longitude: coords?.longitude,
     });
     await this.eventLogRepository.save(log);
+  }
+
+  /**
+   * Tell every party with a stake in this sample that it's just been accepted,
+   * and confirm where it now physically is. Fires on the custody hand-off points
+   * (picked up, hub received, lab received). The collector, the dispatcher/rider,
+   * and the officer who just accepted it each get their own notification; a
+   * broadcast copy (no userId) feeds the admin dashboard. The receiving
+   * facility's name is the "confirmed at" location — the same facility the
+   * EventLog stamps with GPS for the chain of custody.
+   */
+  private async notifyParties(
+    sample: Sample,
+    status: SampleStatus,
+    actor: ScanActor,
+    coords?: GpsCoords,
+  ): Promise<void> {
+    const config = SCAN_NOTIFICATIONS[status];
+    if (!config) return;
+
+    // "Current location" = the accepting officer's facility, falling back to the
+    // sample's own facility if the scanner has none.
+    const facilityId = actor.facilityId || sample.facilityId;
+    let where = 'the receiving facility';
+    if (facilityId) {
+      const facility = await this.sampleRepository.manager.findOne(Facility, {
+        where: { id: facilityId },
+        select: { id: true, name: true },
+      });
+      if (facility?.name) where = facility.name;
+    }
+
+    const base: CreateNotificationInput = {
+      type: config.type,
+      title: config.title,
+      message: `${config.message} Sample ${sample.sampleId} is now confirmed at ${where}.`,
+      sampleId: sample.id,
+      metadata: {
+        status,
+        facilityId,
+        latitude: coords?.latitude,
+        longitude: coords?.longitude,
+      },
+    };
+
+    // De-duped stakeholders: collector, assigned dispatcher, accepting officer.
+    const recipients = new Set<string>(
+      [sample.collectedById, sample.dispatcherId, actor.sub].filter(
+        Boolean,
+      ) as string[],
+    );
+
+    await Promise.all([
+      this.notificationsService.createNotification(base), // broadcast for dashboards
+      ...[...recipients].map((userId) =>
+        this.notificationsService.createNotification({ ...base, userId }),
+      ),
+    ]);
   }
 
   private async sendStatusNotification(

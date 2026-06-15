@@ -11,8 +11,10 @@ import Login from './pages/Login'
 const Dashboard = lazy(() => import('./pages/Dashboard'))
 const Users = lazy(() => import('./pages/Users'))
 const Samples = lazy(() => import('./pages/Samples'))
+const Scan = lazy(() => import('./pages/Scan'))
 const Dispatches = lazy(() => import('./pages/Dispatches'))
 const Batches = lazy(() => import('./pages/Batches'))
+const ShelfScanning = lazy(() => import('./pages/ShelfScanning'))
 const Facilities = lazy(() => import('./pages/Facilities'))
 const Roles = lazy(() => import('./pages/Roles'))
 const Settings = lazy(() => import('./pages/Settings'))
@@ -75,6 +77,16 @@ export default function App() {
           }
         />
         <Route
+          path="/scan"
+          element={
+            <RequirePerm perm="samples.scan">
+              <Suspense fallback={<PageSpinner />}>
+                <Scan />
+              </Suspense>
+            </RequirePerm>
+          }
+        />
+        <Route
           path="/dispatches"
           element={
             <RequirePerm perm="dispatches.view">
@@ -92,6 +104,14 @@ export default function App() {
                 <Batches />
               </Suspense>
             </RequirePerm>
+          }
+        />
+        <Route
+          path="/shelf"
+          element={
+            <Suspense fallback={<PageSpinner />}>
+              <ShelfScanning />
+            </Suspense>
           }
         />
         <Route

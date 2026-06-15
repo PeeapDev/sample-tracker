@@ -7,8 +7,7 @@ import 'dashboard_screen.dart';
 import 'samples_list_screen.dart';
 import 'scan_screen.dart';
 import 'notifications_screen.dart';
-import 'profile_screen.dart';
-import 'user_management_screen.dart';
+import 'settings_screen.dart';
 
 class _NavItem {
   const _NavItem(this.icon, this.selectedIcon, this.label, this.screen);
@@ -32,13 +31,13 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   void initState() {
     super.initState();
-    final role = context.read<AuthProvider>().role;
-    final isAdmin = role == 'admin';
-    final canScan = role == 'dispatcher' ||
-        role == 'hub_officer' ||
-        role == 'lab_officer' ||
-        role == 'admin';
+    final auth = context.read<AuthProvider>();
+    // Scanning (camera) is open to any role granted samples.scan in the RBAC
+    // matrix — toggleable per role from the admin Roles & Permissions page.
+    final canScan = auth.can('samples.scan');
 
+    // Bottom nav stays lean (mobile-first): just the core flows. Notifications
+    // live in the top app-bar bell; profile + admin tools live under Settings.
     _items = [
       const _NavItem(Icons.dashboard_outlined, Icons.dashboard, 'Dashboard',
           DashboardScreen()),
@@ -47,13 +46,6 @@ class _HomeScreenState extends State<HomeScreen> {
       if (canScan)
         const _NavItem(Icons.qr_code_scanner_outlined, Icons.qr_code_scanner,
             'Scan', ScanScreen()),
-      if (isAdmin)
-        const _NavItem(Icons.group_outlined, Icons.group, 'Users',
-            UserManagementScreen()),
-      const _NavItem(Icons.notifications_outlined, Icons.notifications, 'Alerts',
-          NotificationsScreen()),
-      const _NavItem(
-          Icons.person_outlined, Icons.person, 'Profile', ProfileScreen()),
     ];
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -73,6 +65,41 @@ class _HomeScreenState extends State<HomeScreen> {
     return icon;
   }
 
+  void _openNotifications() {
+    Navigator.push(context,
+        MaterialPageRoute(builder: (_) => const NotificationsScreen()));
+  }
+
+  void _openSettings() {
+    Navigator.push(
+        context, MaterialPageRoute(builder: (_) => const SettingsScreen()));
+  }
+
+  /// Top bar shared by both layouts: page title on the left, the notification
+  /// bell (with unread badge) and the settings gear on the right.
+  PreferredSizeWidget _appBar(int unread) {
+    return AppBar(
+      title: Text(_items[_currentIndex].label),
+      actions: [
+        IconButton(
+          tooltip: 'Alerts',
+          onPressed: _openNotifications,
+          icon: Badge(
+            isLabelVisible: unread > 0,
+            label: Text('$unread'),
+            child: const Icon(Icons.notifications_outlined),
+          ),
+        ),
+        IconButton(
+          tooltip: 'Settings',
+          onPressed: _openSettings,
+          icon: const Icon(Icons.settings_outlined),
+        ),
+        const SizedBox(width: 4),
+      ],
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final notifs = context.watch<NotificationProvider>();
@@ -83,6 +110,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
     if (context.isWide) {
       return Scaffold(
+        appBar: _appBar(notifs.unreadCount),
         body: Row(
           children: [
             _SideRail(
@@ -91,6 +119,7 @@ class _HomeScreenState extends State<HomeScreen> {
               unread: notifs.unreadCount,
               extended: context.width >= Breakpoints.desktop,
               onSelected: (i) => setState(() => _currentIndex = i),
+              onOpenSettings: _openSettings,
             ),
             const VerticalDivider(width: 1),
             Expanded(child: body),
@@ -100,6 +129,7 @@ class _HomeScreenState extends State<HomeScreen> {
     }
 
     return Scaffold(
+      appBar: _appBar(notifs.unreadCount),
       body: body,
       bottomNavigationBar: NavigationBar(
         selectedIndex: _currentIndex,
@@ -125,6 +155,7 @@ class _SideRail extends StatelessWidget {
     required this.unread,
     required this.extended,
     required this.onSelected,
+    required this.onOpenSettings,
   });
 
   final List<_NavItem> items;
@@ -132,6 +163,7 @@ class _SideRail extends StatelessWidget {
   final int unread;
   final bool extended;
   final ValueChanged<int> onSelected;
+  final VoidCallback onOpenSettings;
 
   @override
   Widget build(BuildContext context) {
@@ -209,8 +241,10 @@ class _SideRail extends StatelessWidget {
             ),
           ),
           const Divider(height: 1),
-          // User footer
-          Padding(
+          // User footer — tap to open Settings (profile, alerts, admin tools).
+          InkWell(
+            onTap: onOpenSettings,
+            child: Padding(
             padding: EdgeInsets.all(extended ? 16 : 12),
             child: Row(
               mainAxisAlignment:
@@ -255,6 +289,7 @@ class _SideRail extends StatelessWidget {
                 ],
               ],
             ),
+          ),
           ),
         ],
       ),

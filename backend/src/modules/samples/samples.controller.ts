@@ -20,6 +20,8 @@ import {
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
+import { PermissionsGuard } from '../permissions/permissions.guard';
+import { RequirePermission } from '../permissions/require-permission.decorator';
 import { UserRole, SampleStatus } from '../../database/enums';
 
 @ApiTags('Samples')
@@ -57,8 +59,12 @@ export class SamplesController {
     return this.samplesService.getDistrictStats();
   }
 
+  // Scanning (camera) is open to any role with the samples.scan permission,
+  // toggleable per role from the admin Roles & Permissions page. The service
+  // still enforces who may advance a sample to each next stage.
   @Post('scan')
-  @Roles(UserRole.DISPATCHER, UserRole.HUB_OFFICER, UserRole.LAB_OFFICER, UserRole.ADMIN)
+  @UseGuards(PermissionsGuard)
+  @RequirePermission('samples.scan')
   @ApiOperation({
     summary: 'Scan a QR to advance the sample to its next stage (role-aware, GPS-logged)',
   })
@@ -67,7 +73,8 @@ export class SamplesController {
   }
 
   @Get('scan/:sampleId')
-  @Roles(UserRole.DISPATCHER, UserRole.HUB_OFFICER, UserRole.LAB_OFFICER, UserRole.ADMIN)
+  @UseGuards(PermissionsGuard)
+  @RequirePermission('samples.scan')
   @ApiOperation({ summary: 'Look up a sample by sampleId (QR code) without changing it' })
   async scan(@Param('sampleId') sampleId: string) {
     return this.samplesService.findBySampleId(sampleId);

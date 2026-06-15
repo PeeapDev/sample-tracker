@@ -7,6 +7,7 @@ import '../providers/auth_provider.dart';
 import '../providers/theme_provider.dart';
 import '../theme/app_theme.dart';
 import '../theme/responsive.dart';
+import 'scan_screen.dart';
 
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key});
@@ -91,6 +92,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
     bool isDark,
   ) {
     final auth = context.read<AuthProvider>();
+    // Receiving roles can accept a delivery at their centre by scanning it in.
+    final role = auth.role;
+    final canAccept = role == 'dispatcher' ||
+        role == 'hub_officer' ||
+        role == 'lab_officer' ||
+        role == 'admin';
     final maxWidth = context.isWide ? 1320.0 : double.infinity;
     final pad = context.responsive(mobile: 16.0, tablet: 24.0, desktop: 32.0);
 
@@ -110,6 +117,15 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   onToggleTheme: () =>
                       context.read<ThemeProvider>().toggle(context),
                   onRefresh: _refresh,
+                  onAccept: canAccept
+                      ? () => Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) =>
+                                  const ScanScreen(acceptMode: true),
+                            ),
+                          )
+                      : null,
                 ),
                 const SizedBox(height: 24),
                 _KpiGrid(operational: dashboard.operational!),
@@ -138,6 +154,7 @@ class _Header extends StatelessWidget {
     required this.isDark,
     required this.onToggleTheme,
     required this.onRefresh,
+    this.onAccept,
   });
 
   final String name;
@@ -145,6 +162,8 @@ class _Header extends StatelessWidget {
   final bool isDark;
   final VoidCallback onToggleTheme;
   final VoidCallback onRefresh;
+  // Non-null only for roles that receive deliveries — opens the accept scanner.
+  final VoidCallback? onAccept;
 
   @override
   Widget build(BuildContext context) {
@@ -173,6 +192,18 @@ class _Header extends StatelessWidget {
           ),
         ),
         const SizedBox(width: 12),
+        if (onAccept != null) ...[
+          FilledButton.icon(
+            onPressed: onAccept,
+            icon: const Icon(Icons.qr_code_scanner_rounded, size: 18),
+            label: const Text('Accept'),
+            style: FilledButton.styleFrom(
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            ),
+          ),
+          const SizedBox(width: 8),
+        ],
         _IconAction(
           icon: isDark ? Icons.light_mode_rounded : Icons.dark_mode_rounded,
           tooltip: isDark ? 'Light mode' : 'Dark mode',

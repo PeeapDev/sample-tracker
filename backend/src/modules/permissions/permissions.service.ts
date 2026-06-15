@@ -13,6 +13,21 @@ export class PermissionsService implements OnModuleInit {
 
   async onModuleInit() {
     await this.seedIfEmpty();
+    await this.backfillSamplesScan();
+  }
+
+  /**
+   * One-time backfill for databases that were seeded before `samples.scan`
+   * existed: grant it to the default roles so the camera scanner is open to all.
+   * No-op once any `samples.scan` row exists, so admin toggles are respected.
+   */
+  private async backfillSamplesScan() {
+    const exists = await this.repo.count({ where: { permission: 'samples.scan' } });
+    if (exists > 0) return;
+    const roles = ['collector', 'dispatcher', 'hub_officer', 'lab_officer'];
+    await this.repo.save(
+      roles.map((role) => this.repo.create({ role, permission: 'samples.scan' })),
+    );
   }
 
   /** Seed the default matrix the first time the table is empty. */

@@ -8,7 +8,7 @@ import { JwtService } from '@nestjs/jwt';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { ConfigService } from '@nestjs/config';
-import * as bcrypt from 'bcrypt';
+import * as bcrypt from 'bcryptjs';
 import { User } from '../../database/entities/user.entity';
 import { RegisterDto, LoginDto, PinLoginDto } from './dto/auth.dto';
 import { UserRole } from '../../database/enums';
