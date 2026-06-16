@@ -57,4 +57,5 @@ export enum NotificationType {
   LAB_ARRIVAL = 'lab_arrival',
   SAMPLE_DELAYED = 'sample_delayed',
   SAMPLE_LOST = 'sample_lost',
+  SAMPLE_FEEDBACK = 'sample_feedback',
 }

@@ -1,5 +1,6 @@
 import { registerAs } from '@nestjs/config';
 import { Batch } from '../database/entities/batch.entity';
+import { CardTemplate } from '../database/entities/card-template.entity';
 import { Dispatch } from '../database/entities/dispatch.entity';
 import { EventLog } from '../database/entities/event-log.entity';
 import { Facility } from '../database/entities/facility.entity';
@@ -17,6 +18,7 @@ import { User } from '../database/entities/user.entity';
 // single file, so `__dirname`-based globs find nothing at runtime.
 const entities = [
   Batch,
+  CardTemplate,
   Dispatch,
   EventLog,
   Facility,

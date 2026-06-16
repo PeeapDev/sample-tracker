@@ -109,6 +109,48 @@
   box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3);
 }
 
+/* Active origin: a facility that currently has samples in flight. A pulsing
+   amber ring with a small count badge so it reads as "live source". */
+.origin-marker {
+  position: relative;
+}
+.origin-marker .origin-ring {
+  width: 22px;
+  height: 22px;
+  border-radius: 9999px;
+  border: 2px solid #f59e0b;
+  background: rgba(245, 158, 11, 0.18);
+  box-shadow: 0 0 0 0 rgba(245, 158, 11, 0.5);
+  animation: origin-pulse 1.8s ease-out infinite;
+}
+.origin-marker .origin-badge {
+  position: absolute;
+  top: -6px;
+  right: -6px;
+  min-width: 15px;
+  height: 15px;
+  padding: 0 3px;
+  border-radius: 9999px;
+  background: #f59e0b;
+  color: #fff;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 15px;
+  text-align: center;
+  border: 1px solid rgba(255, 255, 255, 0.9);
+}
+@keyframes origin-pulse {
+  0% {
+    box-shadow: 0 0 0 0 rgba(245, 158, 11, 0.5);
+  }
+  70% {
+    box-shadow: 0 0 0 10px rgba(245, 158, 11, 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(245, 158, 11, 0);
+  }
+}
+
 /* ── Coach-mark product tour (driver.js) ──────────────────────────────────
    Theme the spotlight popover to match the app: rounded card, brand-green
    accent, and a dark surface under .dark. */

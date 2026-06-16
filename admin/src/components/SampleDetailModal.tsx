@@ -122,10 +122,10 @@ export function SampleDetailModal({
     <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/60 p-0 sm:items-center sm:p-4" onClick={onClose}>
       <div
         onClick={(e) => e.stopPropagation()}
-        className="w-full max-w-3xl overflow-hidden rounded-t-2xl border bg-white dark:border-ink-700 dark:bg-ink-900 sm:rounded-2xl"
+        className="flex max-h-[100dvh] w-full max-w-3xl flex-col overflow-hidden rounded-t-2xl border bg-white dark:border-ink-700 dark:bg-ink-900 sm:max-h-[90vh] sm:rounded-2xl"
       >
         {/* Header */}
-        <div className="flex items-start justify-between gap-3 border-b p-5 dark:border-ink-700">
+        <div className="flex shrink-0 items-start justify-between gap-3 border-b p-5 dark:border-ink-700">
           <div>
             <div className="font-mono text-lg font-extrabold">{s?.sampleId ?? sampleId}</div>
             {s && (
@@ -143,7 +143,7 @@ export function SampleDetailModal({
           </button>
         </div>
 
-        <div className="p-5">
+        <div className="flex-1 overflow-y-auto p-5">
           {error ? (
             <div className="py-10 text-center text-sm text-red-400">{error}</div>
           ) : !s ? (

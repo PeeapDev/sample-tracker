@@ -40,6 +40,15 @@ export class UsersController {
     return this.usersService.findById(id);
   }
 
+  @Get(':id/card')
+  @RequirePermission('users.view')
+  @ApiOperation({
+    summary: 'Full ID-card payload for a user (staffId + scannable QR + photo)',
+  })
+  async getCard(@Param('id') id: string) {
+    return this.usersService.getCard(id);
+  }
+
   @Post()
   @RequirePermission('users.manage')
   @ApiOperation({ summary: 'Create a new user' })

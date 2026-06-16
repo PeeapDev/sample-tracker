@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { Fragment, useEffect, useMemo, useRef, useState } from 'react'
 import { MapContainer, TileLayer, Marker, Popup, Polyline, useMap } from 'react-leaflet'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
@@ -42,6 +42,22 @@ interface Facility {
   district?: string
   latitude: number | string | null
   longitude: number | string | null
+}
+// An in-flight dispatch leg: samples on the move from one origin towards a
+// destination (typically a hub). Drives the "convergence" layer so the map can
+// show samples arriving at a hub from several different facilities at once.
+interface Leg {
+  dispatchId: string
+  dispatchCode?: string
+  status?: string | null
+  sampleCount?: number | null
+  riderName?: string | null
+  origin?: Centre | null
+  destination?: Centre | null
+  current?: { latitude: number | null; longitude: number | null } | null
+  hasLiveGps?: boolean
+  etaMinutes?: number | null
+  updatedAt?: string
 }
 
 const SL_CENTER: [number, number] = [8.46, -11.78]
@@ -107,6 +123,25 @@ function facilityIcon(color: string): L.DivIcon {
   return facilityIconCache[color]
 }
 
+// A pulsing ring with a sample-count badge marking an ACTIVE origin — a facility
+// that currently has samples in flight toward a destination. Built per count so
+// the badge stays correct without rebuilding on every poll.
+const originIconCache: Record<string, L.DivIcon> = {}
+function originIcon(count: number): L.DivIcon {
+  const key = String(count)
+  if (!originIconCache[key]) {
+    originIconCache[key] = L.divIcon({
+      className: 'origin-marker',
+      html:
+        `<div class="origin-ring"></div>` +
+        (count > 0 ? `<div class="origin-badge">${count}</div>` : ''),
+      iconSize: [22, 22],
+      iconAnchor: [11, 11],
+    })
+  }
+  return originIconCache[key]
+}
+
 /** Fit the map to the given points the first time they appear / when riders move. */
 function FitBounds({ points }: { points: Array<[number, number]> }) {
   const map = useMap()
@@ -123,6 +158,7 @@ function FitBounds({ points }: { points: Array<[number, number]> }) {
 
 export default function LiveMap({ embedded = false }: { embedded?: boolean } = {}) {
   const [riders, setRiders] = useState<Rider[]>([])
+  const [legs, setLegs] = useState<Leg[]>([])
   const [facilities, setFacilities] = useState<Facility[]>([])
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
@@ -134,10 +170,20 @@ export default function LiveMap({ embedded = false }: { embedded?: boolean } = {
   async function load() {
     setRefreshing(true)
     try {
-      const res = await api.get('/tracking/riders', { params: { withinMinutes: 10 } })
-      const list = Array.isArray(res.data) ? res.data : res.data?.data ?? []
+      // Live riders (GPS) + active legs (sample convergence) in one poll. Legs
+      // are best-effort: an older backend without /tracking/legs still shows
+      // riders, so a legs failure must not blank the map.
+      const [ridersRes, legsRes] = await Promise.all([
+        api.get('/tracking/riders', { params: { withinMinutes: 10 } }),
+        api.get('/tracking/legs', { params: { withinMinutes: 30 } }).catch(() => null),
+      ])
       if (!activeRef.current) return
+      const list = Array.isArray(ridersRes.data) ? ridersRes.data : ridersRes.data?.data ?? []
       setRiders(Array.isArray(list) ? list : [])
+      if (legsRes) {
+        const legList = Array.isArray(legsRes.data) ? legsRes.data : legsRes.data?.data ?? []
+        setLegs(Array.isArray(legList) ? legList : [])
+      }
       setLastUpdated(Date.now())
       setError(null)
     } catch (e) {
@@ -190,8 +236,43 @@ export default function LiveMap({ embedded = false }: { embedded?: boolean } = {
     [facilities],
   )
 
-  // Fit to riders + their destinations (not every facility, which would zoom out
-  // to the whole country on each poll).
+  // Active legs whose origin we can place on the map. Each carries an `oLat/oLng`
+  // (origin), and — where known — a destination and current position so we can
+  // draw the origin → (current) → destination convergence path.
+  const locatedLegs = useMemo(
+    () =>
+      legs
+        .map((l) => ({
+          ...l,
+          oLat: num(l.origin?.latitude),
+          oLng: num(l.origin?.longitude),
+          dLat: num(l.destination?.latitude),
+          dLng: num(l.destination?.longitude),
+          cLat: num(l.current?.latitude),
+          cLng: num(l.current?.longitude),
+        }))
+        .filter((l) => Number.isFinite(l.oLat) && Number.isFinite(l.oLng)),
+    [legs],
+  )
+
+  // Group concurrent legs by destination so a hub's popup can show how many
+  // samples are converging on it and from where.
+  const convergence = useMemo(() => {
+    const byDest = new Map<string, { name: string; samples: number; origins: Set<string> }>()
+    locatedLegs.forEach((l) => {
+      const name = l.destination?.name
+      if (!name) return
+      const e = byDest.get(name) ?? { name, samples: 0, origins: new Set<string>() }
+      e.samples += l.sampleCount ?? 0
+      if (l.origin?.name) e.origins.add(l.origin.name)
+      byDest.set(name, e)
+    })
+    return byDest
+  }, [locatedLegs])
+
+  // Fit to riders + their destinations + every active leg's origin/destination,
+  // so a hub plus all the facilities feeding it are framed together (not the
+  // whole country).
   const fitPoints = useMemo<Array<[number, number]>>(() => {
     const pts: Array<[number, number]> = located.map((r) => [r.lat, r.lng])
     located.forEach((r) => {
@@ -199,10 +280,15 @@ export default function LiveMap({ embedded = false }: { embedded?: boolean } = {
         pts.push([Number(r.destination.latitude), Number(r.destination.longitude)])
       }
     })
+    locatedLegs.forEach((l) => {
+      pts.push([l.oLat, l.oLng])
+      if (Number.isFinite(l.dLat) && Number.isFinite(l.dLng)) pts.push([l.dLat, l.dLng])
+    })
     return pts
-  }, [located])
+  }, [located, locatedLegs])
 
   const inTransit = located.filter((r) => r.status === 'in_transit').length
+  const legSamples = locatedLegs.reduce((sum, l) => sum + (l.sampleCount ?? 0), 0)
   const secondsAgo = lastUpdated ? Math.max(0, Math.round((Date.now() - lastUpdated) / 1000)) : null
 
   return (
@@ -214,7 +300,9 @@ export default function LiveMap({ embedded = false }: { embedded?: boolean } = {
           </h2>
           <p className="text-sm text-slate-400">
             {located.length} rider{located.length === 1 ? '' : 's'} broadcasting
-            {inTransit > 0 ? ` · ${inTransit} en route` : ''} · last 10 minutes
+            {inTransit > 0 ? ` · ${inTransit} en route` : ''}
+            {legSamples > 0 ? ` · ${legSamples} sample${legSamples === 1 ? '' : 's'} in flight` : ''} ·
+            last 10 minutes
           </p>
         </div>
         <div className="flex items-center gap-3">
@@ -238,6 +326,11 @@ export default function LiveMap({ embedded = false }: { embedded?: boolean } = {
         <Legend color="#8B5CF6" label="Hub" pin />
         <Legend color="#14B8A6" label="Lab" pin />
         <Legend color="#3B82F6" label="Facility" pin />
+        <span className="mx-1 h-3 w-px bg-slate-300 dark:bg-ink-700" />
+        <span className="inline-flex items-center gap-1.5">
+          <span className="inline-block h-3 w-3 rounded-full ring-2 ring-amber-400" />
+          Active origin (samples in flight)
+        </span>
       </div>
 
       {error && located.length === 0 ? (
@@ -258,19 +351,83 @@ export default function LiveMap({ embedded = false }: { embedded?: boolean } = {
             <FitBounds points={fitPoints} />
 
             {/* Centres */}
-            {locatedFacilities.map((f) => (
-              <Marker key={f.id} position={[f.lat, f.lng]} icon={facilityIcon(facilityColor(f.type))}>
-                <Popup>
-                  <div className="min-w-[160px] space-y-0.5">
-                    <div className="text-sm font-bold text-slate-900">{f.name}</div>
-                    <div className="text-xs capitalize text-slate-600">
-                      {f.type.replace('_', ' ')}
-                      {f.district ? ` · ${f.district}` : ''}
+            {locatedFacilities.map((f) => {
+              const inbound = convergence.get(f.name)
+              return (
+                <Marker key={f.id} position={[f.lat, f.lng]} icon={facilityIcon(facilityColor(f.type))}>
+                  <Popup>
+                    <div className="min-w-[160px] space-y-0.5">
+                      <div className="text-sm font-bold text-slate-900">{f.name}</div>
+                      <div className="text-xs capitalize text-slate-600">
+                        {f.type.replace('_', ' ')}
+                        {f.district ? ` · ${f.district}` : ''}
+                      </div>
+                      {inbound && inbound.samples > 0 && (
+                        <div className="mt-1 flex items-center gap-1.5 rounded bg-violet-50 px-1.5 py-1 text-xs font-semibold text-violet-700">
+                          <Boxes size={12} /> {inbound.samples} sample
+                          {inbound.samples === 1 ? '' : 's'} inbound from {inbound.origins.size}{' '}
+                          facilit{inbound.origins.size === 1 ? 'y' : 'ies'}
+                        </div>
+                      )}
                     </div>
-                  </div>
-                </Popup>
-              </Marker>
-            ))}
+                  </Popup>
+                </Marker>
+              )
+            })}
+
+            {/* Convergence layer: each active leg's path origin → current →
+                destination, with a counted ring at the origin. Shows samples
+                funnelling into a hub from several facilities, even before the
+                rider starts broadcasting GPS. */}
+            {locatedLegs.map((l) => {
+              const path: Array<[number, number]> = [[l.oLat, l.oLng]]
+              if (Number.isFinite(l.cLat) && Number.isFinite(l.cLng)) path.push([l.cLat, l.cLng])
+              if (Number.isFinite(l.dLat) && Number.isFinite(l.dLng)) path.push([l.dLat, l.dLng])
+              return (
+                <Fragment key={`leg-${l.dispatchId}`}>
+                  {path.length > 1 && (
+                    <Polyline
+                      positions={path}
+                      pathOptions={{
+                        color: riderColor(l.status),
+                        weight: 2,
+                        dashArray: l.hasLiveGps ? undefined : '4 8',
+                        opacity: 0.45,
+                      }}
+                    />
+                  )}
+                  <Marker position={[l.oLat, l.oLng]} icon={originIcon(l.sampleCount ?? 0)}>
+                    <Popup>
+                      <div className="min-w-[190px] space-y-1">
+                        <div className="text-sm font-bold text-slate-900">
+                          {l.origin?.name ?? 'Origin'}
+                        </div>
+                        <div className="flex items-center gap-1.5 text-xs text-slate-600">
+                          <Truck size={12} /> {l.origin?.name ?? '—'} → {l.destination?.name ?? '—'}
+                        </div>
+                        {l.sampleCount != null && (
+                          <div className="flex items-center gap-1.5 text-xs font-semibold text-slate-700">
+                            <Boxes size={12} /> {l.sampleCount} sample
+                            {l.sampleCount === 1 ? '' : 's'} in transit
+                          </div>
+                        )}
+                        {l.riderName && (
+                          <div className="text-xs text-slate-600">Rider: {l.riderName}</div>
+                        )}
+                        {l.etaMinutes != null && (
+                          <div className="flex items-center gap-1.5 text-xs text-slate-600">
+                            <Clock size={12} /> ETA ~{l.etaMinutes} min
+                          </div>
+                        )}
+                        <div className="text-xs text-slate-500">
+                          {l.hasLiveGps ? 'Live GPS' : 'Awaiting GPS — shown at origin'}
+                        </div>
+                      </div>
+                    </Popup>
+                  </Marker>
+                </Fragment>
+              )
+            })}
 
             {/* Route line rider → destination */}
             {located.map((r) =>

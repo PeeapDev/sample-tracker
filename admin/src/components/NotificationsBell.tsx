@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type ComponentType } from 'react'
+import { useNavigate } from 'react-router-dom'
 import {
   Bell,
   BellRing,
@@ -11,9 +12,16 @@ import {
   FlaskConical,
   PackageX,
   Sparkles,
+  Star,
 } from 'lucide-react'
 import { api, apiError } from '../lib/api'
 import { timeAgo } from '../lib/ui'
+import {
+  ensurePushSubscription,
+  notificationPermission,
+  pushSupported,
+  requestAndSubscribe,
+} from '../lib/push'
 
 interface Notification {
   id: string
@@ -40,6 +48,7 @@ const TYPE_META: Record<
   lab_arrival: { icon: PackageCheck, color: '#14B8A6' },
   sample_delayed: { icon: AlertTriangle, color: '#F59E0B' },
   sample_lost: { icon: PackageX, color: '#EF4444' },
+  sample_feedback: { icon: Star, color: '#EAB308' },
 }
 
 function typeMeta(type: string) {
@@ -54,6 +63,12 @@ export function NotificationsBell() {
   const [error, setError] = useState<string | null>(null)
   const wrapRef = useRef<HTMLDivElement | null>(null)
   const activeRef = useRef(true)
+  const navigate = useNavigate()
+  // Whether this browser can show OS push notifications yet.
+  const [perm, setPerm] = useState<NotificationPermission | 'unsupported'>(
+    notificationPermission(),
+  )
+  const [enabling, setEnabling] = useState(false)
 
   async function loadCount() {
     try {
@@ -81,11 +96,26 @@ export function NotificationsBell() {
     activeRef.current = true
     loadCount()
     const poll = setInterval(loadCount, POLL_MS)
+    // If this device already granted notification permission, (re)register its
+    // push subscription so background pushes keep arriving after a redeploy.
+    void ensurePushSubscription()
     return () => {
       activeRef.current = false
       clearInterval(poll)
     }
   }, [])
+
+  // Prompts for OS notification permission (a real click, required by browsers)
+  // then subscribes this device for background web push.
+  async function enablePush() {
+    setEnabling(true)
+    try {
+      await requestAndSubscribe()
+    } finally {
+      setPerm(notificationPermission())
+      setEnabling(false)
+    }
+  }
 
   // Close on outside click + Escape.
   useEffect(() => {
@@ -120,6 +150,23 @@ export function NotificationsBell() {
     } catch {
       /* leave optimistic state; next poll will reconcile the count */
     }
+  }
+
+  // The page the notification points at: dispatch events open the dispatch
+  // detail, everything else opens the sample it concerns. The ids stored on a
+  // notification are the internal record UUIDs the detail modals key off of.
+  function targetFor(n: Notification): string | null {
+    if (n.dispatchId) return `/dispatches?open=${n.dispatchId}`
+    if (n.sampleId) return `/samples?open=${n.sampleId}`
+    return null
+  }
+
+  // Clicking a row marks it read AND takes you to the thing it's about.
+  function openNotification(n: Notification) {
+    void markRead(n)
+    const to = targetFor(n)
+    setOpen(false)
+    if (to) navigate(to)
   }
 
   async function markAllRead() {
@@ -165,6 +212,25 @@ export function NotificationsBell() {
             )}
           </div>
 
+          {/* Until this device grants permission, in-app is the only channel —
+              offer a one-click enable so events also pop in the browser. */}
+          {pushSupported() && perm === 'default' && (
+            <button
+              onClick={enablePush}
+              disabled={enabling}
+              className="flex w-full items-center gap-2 border-b bg-brand/5 px-4 py-2.5 text-left text-xs font-medium text-brand-600 hover:bg-brand/10 disabled:opacity-60 dark:border-ink-700 dark:text-brand-400"
+            >
+              {enabling ? <Loader2 size={14} className="animate-spin" /> : <BellRing size={14} />}
+              Enable browser notifications
+            </button>
+          )}
+          {pushSupported() && perm === 'denied' && (
+            <div className="border-b bg-amber-500/5 px-4 py-2.5 text-[11px] text-amber-600 dark:border-ink-700 dark:text-amber-400">
+              Browser notifications are blocked. Allow them in your browser&apos;s site settings to
+              get alerts when the app is closed.
+            </div>
+          )}
+
           <div className="max-h-[60vh] overflow-y-auto">
             {loading && items.length === 0 ? (
               <div className="flex items-center justify-center py-10 text-slate-400">
@@ -197,7 +263,7 @@ export function NotificationsBell() {
                   return (
                     <li key={n.id}>
                       <button
-                        onClick={() => markRead(n)}
+                        onClick={() => openNotification(n)}
                         className={
                           'flex w-full items-start gap-3 px-4 py-3 text-left transition hover:bg-slate-50 dark:hover:bg-ink-800/60 ' +
                           (n.isRead ? '' : 'bg-brand/5')

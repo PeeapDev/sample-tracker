@@ -1,5 +1,6 @@
 import {
   Injectable,
+  Logger,
   NotFoundException,
   BadRequestException,
   ForbiddenException,
@@ -76,6 +77,8 @@ const SCAN_NOTIFICATIONS: Partial<
 
 @Injectable()
 export class SamplesService {
+  private readonly logger = new Logger(SamplesService.name);
+
   constructor(
     @InjectRepository(Sample)
     private sampleRepository: Repository<Sample>,
@@ -104,7 +107,98 @@ export class SamplesService {
       comment: dto.comment,
       stage: sample.status,
     });
-    return this.feedbackRepository.save(feedback);
+    const saved = await this.feedbackRepository.save(feedback);
+
+    // Fan out alerts (rider got rated / bad condition → admins). Best-effort:
+    // a notification failure must never fail the feedback write itself.
+    try {
+      await this.notifyFeedback(sample, saved, raterId);
+    } catch (err) {
+      this.logger.warn(
+        `Feedback saved but notification failed for sample ${sample.sampleId}: ${String(err)}`,
+      );
+    }
+
+    return saved;
+  }
+
+  /** Sample conditions that warrant alerting ops (anything but "intact"). */
+  private static readonly BAD_CONDITIONS = new Set([
+    'compromised',
+    'damaged',
+    'leaking',
+  ]);
+
+  /**
+   * Two audiences for feedback on a handoff:
+   *  - the rider (assigned dispatcher) learns they were rated, and
+   *  - admins (+ a dashboard broadcast) are alerted when the sample arrived in a
+   *    bad condition, since that's the actionable case.
+   */
+  private async notifyFeedback(
+    sample: Sample,
+    feedback: SampleFeedback,
+    raterId: string,
+  ): Promise<void> {
+    const sampleId = sample.sampleId;
+    const condition = (feedback.sampleCondition ?? '').trim().toLowerCase();
+    const isBad = SamplesService.BAD_CONDITIONS.has(condition);
+    const commentTail = feedback.comment?.trim()
+      ? ` "${feedback.comment.trim()}"`
+      : '';
+
+    const jobs: Promise<unknown>[] = [];
+
+    // Rider rating → tell the rider (skip if they rated their own delivery).
+    if (
+      feedback.riderRating &&
+      sample.dispatcherId &&
+      sample.dispatcherId !== raterId
+    ) {
+      jobs.push(
+        this.notificationsService.createNotification({
+          type: NotificationType.SAMPLE_FEEDBACK,
+          title: 'Delivery rated',
+          message: `You received a ${feedback.riderRating}★ delivery rating for sample ${sampleId}.${commentTail}`,
+          userId: sample.dispatcherId,
+          sampleId: sample.id,
+          metadata: {
+            kind: 'rider_rating',
+            riderRating: feedback.riderRating,
+            sampleCondition: feedback.sampleCondition,
+            stage: feedback.stage,
+          },
+        }),
+      );
+    }
+
+    // Bad condition → broadcast + every admin.
+    if (isBad) {
+      const recipients = new Set<string>();
+      await this.addBroadcastRecipients(recipients, null);
+      const message = `Sample ${sampleId} was reported ${condition} at the ${String(
+        feedback.stage,
+      )} stage.${commentTail}`;
+      const base: CreateNotificationInput = {
+        type: NotificationType.SAMPLE_FEEDBACK,
+        title: 'Sample condition alert',
+        message,
+        sampleId: sample.id,
+        metadata: {
+          kind: 'bad_condition',
+          sampleCondition: condition,
+          stage: feedback.stage,
+        },
+      };
+      jobs.push(this.notificationsService.createNotification(base)); // dashboard broadcast
+      recipients.forEach((userId) =>
+        jobs.push(
+          this.notificationsService.createNotification({ ...base, userId }),
+        ),
+      );
+    }
+
+    await Promise.all(jobs);
   }
 
   async getFeedback(id: string): Promise<SampleFeedback[]> {

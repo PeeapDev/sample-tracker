@@ -180,7 +180,9 @@ export function SampleTracker({
         {!lost && (
           <div
             ref={markerRef}
-            className="absolute top-5 z-20 -translate-x-1/2 -translate-y-1/2"
+            // Decorative — must not swallow clicks on the stage node it sits over
+            // (otherwise the current stage, e.g. "Picked Up", isn't clickable).
+            className="pointer-events-none absolute top-5 z-20 -translate-x-1/2 -translate-y-1/2"
             style={{ left: `${INSET}%` }}
           >
             <div className="grid h-8 w-8 place-items-center rounded-full bg-brand text-white shadow-lg shadow-brand/40 ring-4 ring-brand/20">

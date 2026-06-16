@@ -11,6 +11,7 @@ import {
   Boxes,
   Building2,
   ShieldCheck,
+  CreditCard,
   Settings as SettingsIcon,
   ScanLine,
   QrCode,
@@ -59,6 +60,7 @@ const NAV: NavItem[] = [
   },
   { to: '/batches', label: 'Batches & Boxes', icon: Boxes, perm: 'batches.manage', section: 'main' },
   { to: '/users', label: 'Users', icon: UsersIcon, perm: 'users.view', section: 'main' },
+  { to: '/id-cards', label: 'ID Cards', icon: CreditCard, perm: 'users.view', section: 'main' },
   { to: '/facilities', label: 'Facilities & Hubs', icon: Building2, perm: 'settings.manage', section: 'admin' },
   { to: '/roles', label: 'Roles & Permissions', icon: ShieldCheck, perm: 'roles.manage', section: 'admin' },
   { to: '/settings', label: 'Settings', icon: SettingsIcon, perm: 'settings.manage', section: 'admin' },
@@ -85,6 +87,7 @@ const TITLES: Record<string, string> = {
   '/batches': 'Batches & Boxes',
   '/shelf': 'Shelf Scanning',
   '/users': 'User Management',
+  '/id-cards': 'ID Card Designer',
   '/facilities': 'Facilities & Hubs',
   '/roles': 'Roles & Permissions',
   '/settings': 'Settings',
@@ -243,7 +246,7 @@ export default function AdminLayout() {
       )}
 
       <div className="flex min-w-0 flex-1 flex-col">
-        <header className="flex items-center gap-3 border-b bg-white/80 px-4 py-3 backdrop-blur dark:border-ink-700 dark:bg-ink-900/80 sm:px-6">
+        <header className="relative z-30 flex items-center gap-3 border-b bg-white/80 px-4 py-3 backdrop-blur dark:border-ink-700 dark:bg-ink-900/80 sm:px-6">
           <button
             onClick={() => setOpen(true)}
             className="rounded-lg p-2 text-slate-500 hover:bg-slate-100 dark:hover:bg-ink-800 lg:hidden"

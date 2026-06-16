@@ -37,6 +37,11 @@ export class CreateUserDto {
   @IsString()
   @MinLength(4)
   pin?: string;
+
+  // Base64 data-URL of the staff photo for the ID card (optional).
+  @IsOptional()
+  @IsString()
+  photo?: string;
 }
 
 export class UpdateUserDto {
@@ -69,4 +74,8 @@ export class UpdateUserDto {
   @IsOptional()
   @IsBoolean()
   isActive?: boolean;
+
+  @IsOptional()
+  @IsString()
+  photo?: string;
 }

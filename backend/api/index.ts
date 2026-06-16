@@ -14,7 +14,12 @@ let ready: Promise<void> | null = null;
 async function bootstrap(): Promise<void> {
   const app = await NestFactory.create(AppModule, new ExpressAdapter(server), {
     logger: ['error', 'warn'],
+    // Disable the default 100kb body parser; register our own below with a
+    // generous limit so base64 card images / staff photos aren't rejected (413).
+    bodyParser: false,
   });
+  app.use(express.json({ limit: '12mb' }));
+  app.use(express.urlencoded({ extended: true, limit: '12mb' }));
 
   app.enableCors({
     origin: true,

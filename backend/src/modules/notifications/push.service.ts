@@ -9,6 +9,7 @@ export interface PushPayload {
   body: string;
   type?: string;
   sampleId?: string;
+  dispatchId?: string;
   url?: string;
 }
 
