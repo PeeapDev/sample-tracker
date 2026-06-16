@@ -126,6 +126,10 @@ class _ScanScreenState extends State<ScanScreen> {
   }
 
   void _showParcelResult(Map<String, dynamic> result, Position? pos) {
+    if (result['queued'] == true) {
+      _showQueuedResult();
+      return;
+    }
     final parcel = result['parcel'] as Map<String, dynamic>?;
     final code = parcel?['parcelId']?.toString() ?? '';
     final type = (parcel?['type']?.toString() ?? '').replaceAll('_', ' ');
@@ -266,6 +270,11 @@ class _ScanScreenState extends State<ScanScreen> {
   /// the hospital that just received it (the scanner's facility) and the GPS
   /// captured at the moment of the scan.
   void _showScanResult(Map<String, dynamic> result, Position? pos) {
+    // Offline: the scan was saved to the outbox, not applied on the server yet.
+    if (result['queued'] == true) {
+      _showQueuedResult();
+      return;
+    }
     final sample = result['sample'] as Map<String, dynamic>?;
     final sampleId = sample?['id']?.toString();
     final code = sample?['sampleId']?.toString() ?? '';
@@ -330,6 +339,33 @@ class _ScanScreenState extends State<ScanScreen> {
     );
   }
 
+  /// Offline scan feedback: be honest that nothing changed on the server yet —
+  /// the action is saved locally and will replay automatically when back online.
+  void _showQueuedResult() {
+    showDialog(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: Row(
+          children: [
+            Icon(Icons.cloud_off, color: Colors.orange.shade700),
+            const SizedBox(width: 8),
+            const Expanded(child: Text('Saved offline')),
+          ],
+        ),
+        content: const Text(
+          'No connection right now, so this scan was saved on your device. '
+          "It will sync automatically the moment you're back online.",
+        ),
+        actions: [
+          FilledButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Got it'),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _resultRow(IconData icon, String label, String value) {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 4),
@@ -352,6 +388,10 @@ class _ScanScreenState extends State<ScanScreen> {
 
   /// Shows the box manifest — every sample inside, with the advance summary.
   void _showBatchManifest(Map<String, dynamic> result) {
+    if (result['queued'] == true) {
+      _showQueuedResult();
+      return;
+    }
     final batch = result['batch'] as Map<String, dynamic>?;
     final samples = (batch?['samples'] as List?) ?? const [];
     final message = result['message']?.toString() ?? '';

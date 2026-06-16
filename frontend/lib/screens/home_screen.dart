@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 import '../providers/auth_provider.dart';
 import '../providers/notification_provider.dart';
 import '../theme/responsive.dart';
+import '../widgets/sync_status_banner.dart';
 import 'dashboard_screen.dart';
 import 'samples_list_screen.dart';
 import 'batch_list_screen.dart';
@@ -109,9 +110,16 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   Widget build(BuildContext context) {
     final notifs = context.watch<NotificationProvider>();
-    final body = IndexedStack(
+    final stack = IndexedStack(
       index: _currentIndex,
       children: _items.map((e) => e.screen).toList(),
+    );
+    // Offline / pending-sync strip sits above whichever screen is showing.
+    final body = Column(
+      children: [
+        const SyncStatusBanner(),
+        Expanded(child: stack),
+      ],
     );
 
     if (context.isWide) {

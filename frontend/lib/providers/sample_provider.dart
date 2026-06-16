@@ -236,8 +236,12 @@ class SampleProvider extends ChangeNotifier {
 
     try {
       final data = await _api.post('/samples', sampleData);
-      final sample = SampleModel.fromJson(data);
-      _samples.insert(0, sample);
+      // Queued offline: the server hasn't assigned an id yet, so just report
+      // success — the outbox will create it on reconnect.
+      if (data['queued'] != true) {
+        final sample = SampleModel.fromJson(data);
+        _samples.insert(0, sample);
+      }
       _error = null;
       _isLoading = false;
       notifyListeners();
@@ -258,7 +262,9 @@ class SampleProvider extends ChangeNotifier {
       if (pin != null) body['pin'] = pin;
 
       final data = await _api.patch('/samples/$id/status', body);
-      _selectedSample = SampleModel.fromJson(data);
+      if (data['queued'] != true) {
+        _selectedSample = SampleModel.fromJson(data);
+      }
       notifyListeners();
       return true;
     } catch (e) {
@@ -290,7 +296,9 @@ class SampleProvider extends ChangeNotifier {
   Future<bool> markLost(String id, String notes) async {
     try {
       final data = await _api.patch('/samples/$id/lost', {'notes': notes});
-      _selectedSample = SampleModel.fromJson(data);
+      if (data['queued'] != true) {
+        _selectedSample = SampleModel.fromJson(data);
+      }
       notifyListeners();
       return true;
     } catch (e) {

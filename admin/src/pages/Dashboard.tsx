@@ -26,14 +26,21 @@ import {
   TrendingDown,
   RefreshCw,
   ChevronRight,
+  TestTubes,
+  QrCode,
+  Package,
 } from 'lucide-react'
+import { Link } from 'react-router-dom'
 import { api, apiError } from '../lib/api'
+import { useAuth } from '../lib/auth'
+import { useRbac } from '../lib/rbac'
 import { getCache, setCache, hasCache } from '../lib/cache'
 import {
   CHART_PALETTE,
   cn,
   compact,
   num,
+  roleMeta,
   statusColor,
   statusLabel,
   timeAgo,
@@ -58,6 +65,11 @@ interface Dash {
 
 export default function Dashboard() {
   const { theme } = useTheme()
+  const { user } = useAuth()
+  const { can } = useRbac()
+  const role = user?.role ?? ''
+  const showNetwork = can(role, 'dashboard.network')
+  const showMap = can(role, 'livemap.view')
   const [data, setData] = useState<Dash | null>(() => getCache<Dash>('dashboard') ?? null)
   const [loading, setLoading] = useState(!hasCache('dashboard'))
   const [refreshing, setRefreshing] = useState(false)
@@ -101,6 +113,12 @@ export default function Dashboard() {
     }, containerRef)
     return () => ctx.revert()
   }, [data])
+
+  // Non-admin roles don't get the network-wide dashboard — show a simple,
+  // friendly role dashboard with quick links to the features they can use.
+  if (!showNetwork) {
+    return <RoleDashboard name={user?.firstName ?? ''} role={role} can={can} />
+  }
 
   if (loading && !data) return <DashboardSkeleton />
   if (error)
@@ -348,9 +366,11 @@ export default function Dashboard() {
       </div>
 
       {/* Live rider map — sits below the charts on the dashboard */}
-      <div className="dash-section">
-        <LiveMap embedded />
-      </div>
+      {showMap && (
+        <div className="dash-section">
+          <LiveMap embedded />
+        </div>
+      )}
 
       {tracked && (
         <SampleDetailModal
@@ -359,6 +379,60 @@ export default function Dashboard() {
           onClose={() => setTracked(null)}
         />
       )}
+    </div>
+  )
+}
+
+// Quick-link tiles for non-admin roles, each gated on a permission the role has.
+const QUICK_LINKS: Array<{ to: string; label: string; desc: string; icon: ReactNode; color: string; perm: string }> = [
+  { to: '/samples', label: 'Samples', desc: 'Browse & register samples', icon: <TestTubes size={20} />, color: '#3B82F6', perm: 'samples.view' },
+  { to: '/scan', label: 'Scan', desc: 'Scan a sample or box', icon: <QrCode size={20} />, color: '#22C55E', perm: 'samples.scan' },
+  { to: '/parcels', label: 'Parcels', desc: 'View & register parcels', icon: <Package size={20} />, color: '#8B5CF6', perm: 'parcels.view' },
+  { to: '/dispatches', label: 'Dispatches', desc: 'Manage dispatches', icon: <Truck size={20} />, color: '#F97316', perm: 'dispatches.view' },
+  { to: '/batches', label: 'Batches & Boxes', desc: 'Create & sort batches', icon: <Boxes size={20} />, color: '#14B8A6', perm: 'batches.manage' },
+]
+
+function RoleDashboard({
+  name,
+  role,
+  can,
+}: {
+  name: string
+  role: string
+  can: (role: string, perm: string) => boolean
+}) {
+  const { label } = roleMeta(role)
+  const links = QUICK_LINKS.filter((l) => can(role, l.perm))
+  return (
+    <div className="space-y-6">
+      <div>
+        <h2 className="text-2xl font-extrabold tracking-tight">
+          Welcome{name ? `, ${name}` : ''}
+        </h2>
+        <p className="text-sm text-slate-400">
+          You're signed in as {label}. Here's what you can jump into.
+        </p>
+      </div>
+
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
+        {links.map((l) => (
+          <Link key={l.to} to={l.to}>
+            <HoverCard className="flex h-full items-center gap-4">
+              <span
+                className="grid h-12 w-12 shrink-0 place-items-center rounded-xl"
+                style={{ background: `${l.color}24`, color: l.color }}
+              >
+                {l.icon}
+              </span>
+              <div className="min-w-0 flex-1">
+                <div className="font-bold">{l.label}</div>
+                <div className="truncate text-sm text-slate-400">{l.desc}</div>
+              </div>
+              <ChevronRight size={18} className="shrink-0 text-slate-400" />
+            </HoverCard>
+          </Link>
+        ))}
+      </div>
     </div>
   )
 }

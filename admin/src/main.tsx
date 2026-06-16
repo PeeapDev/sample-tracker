@@ -6,6 +6,18 @@ import App from './App.tsx'
 import { AuthProvider } from './lib/auth'
 import { ThemeProvider } from './lib/theme'
 import { RbacProvider } from './lib/rbac'
+import { wireAutoFlush } from './lib/outbox'
+
+// Boot offline: register the service worker (caches the app shell) and start the
+// outbox auto-flusher (replays queued writes when connectivity returns).
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('/sw.js').catch(() => {
+      /* SW is a progressive enhancement — ignore registration failures */
+    })
+  })
+}
+wireAutoFlush()
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>

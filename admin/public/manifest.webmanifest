@@ -1,0 +1,14 @@
+{
+  "name": "NSRTMS Admin Console",
+  "short_name": "NSRTMS",
+  "description": "National Sample Referral & Tracking — admin console",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#0b1220",
+  "theme_color": "#0b1220",
+  "icons": [
+    { "src": "/icons.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" },
+    { "src": "/favicon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }
+  ]
+}

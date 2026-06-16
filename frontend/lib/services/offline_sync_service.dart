@@ -47,17 +47,31 @@ class OfflineSyncService {
         final data = jsonDecode(op) as Map<String, dynamic>;
         final method = data['method'] as String;
         final path = data['path'] as String;
-        final body = data['body'] as Map<String, dynamic>;
+        final body = (data['body'] as Map?)?.cast<String, dynamic>() ?? {};
 
+        // Replay through the live ApiService so the *current* auth token is
+        // attached (tokens were reloaded above). Bypass the offline queue on
+        // replay — we don't want a transient failure here to re-enqueue.
         switch (method) {
           case 'POST':
-            await _api.post(path, body);
+            await _api.post(path, body, queueIfOffline: false);
             break;
           case 'PATCH':
-            await _api.patch(path, body);
+            await _api.patch(path, body, queueIfOffline: false);
             break;
         }
+        // success → drop it (don't add to remaining).
+      } on ApiException catch (e) {
+        // Server reachable but it *rejected* the write (e.g. wrong state, dup,
+        // validation). Retrying forever would never succeed, so drop it and let
+        // the UI surface the rejection on next refresh. 401 may be a stale
+        // token mid-flush — keep those to retry after a refresh.
+        if (e.statusCode == 401) {
+          remaining.add(op);
+        }
+        // 4xx/other → drop (do not re-enqueue).
       } catch (_) {
+        // Network/timeout — still offline. Keep it queued for the next attempt.
         remaining.add(op);
       }
     }

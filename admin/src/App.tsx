@@ -1,25 +1,71 @@
-import { lazy, Suspense, type ReactNode } from 'react'
+import { Component, lazy, Suspense, type ComponentType, type ReactNode } from 'react'
 import { Navigate, Route, Routes } from 'react-router-dom'
 import { useAuth } from './lib/auth'
 import { useRbac } from './lib/rbac'
 import AdminLayout from './components/AdminLayout'
 import Login from './pages/Login'
 
+// A failed dynamic import almost always means a stale chunk hash after a new
+// deploy: the open tab references chunk filenames the server no longer has, so
+// the import 404s. Reload ONCE (guarded against loops) to pull the fresh
+// index.html + current chunks, instead of dark-blanking the app.
+function lazyWithRetry(factory: () => Promise<{ default: ComponentType<any> }>) {
+  const KEY = 'nsrtms-chunk-reloaded'
+  return lazy(async () => {
+    try {
+      const mod = await factory()
+      sessionStorage.removeItem(KEY) // success → let a future deploy reload again
+      return mod
+    } catch (err) {
+      if (!sessionStorage.getItem(KEY)) {
+        sessionStorage.setItem(KEY, '1')
+        window.location.reload()
+        return new Promise<{ default: ComponentType<any> }>(() => {}) // hang during reload
+      }
+      throw err
+    }
+  })
+}
+
+// Catches anything that still slips through (e.g. a chunk failure after the
+// one-shot reload) so the user gets a Reload button, never a blank dark page.
+class ErrorBoundary extends Component<{ children: ReactNode }, { hasError: boolean }> {
+  state = { hasError: false }
+  static getDerivedStateFromError() {
+    return { hasError: true }
+  }
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="grid h-screen place-items-center text-slate-400">
+          <div className="text-center">
+            <p className="mb-3">Something went wrong loading this page.</p>
+            <button onClick={() => window.location.reload()} className="btn-primary">
+              Reload
+            </button>
+          </div>
+        </div>
+      )
+    }
+    return this.props.children
+  }
+}
+
 // Code-split each page into its own chunk so heavy deps (recharts on the
 // Dashboard, gsap on the trackers) load only when that page is visited,
 // keeping the initial bundle — and first paint — small.
-const Dashboard = lazy(() => import('./pages/Dashboard'))
-const Users = lazy(() => import('./pages/Users'))
-const Samples = lazy(() => import('./pages/Samples'))
-const Scan = lazy(() => import('./pages/Scan'))
-const Dispatches = lazy(() => import('./pages/Dispatches'))
-const Parcels = lazy(() => import('./pages/Parcels'))
-const LiveMap = lazy(() => import('./pages/LiveMap'))
-const Batches = lazy(() => import('./pages/Batches'))
-const ShelfScanning = lazy(() => import('./pages/ShelfScanning'))
-const Facilities = lazy(() => import('./pages/Facilities'))
-const Roles = lazy(() => import('./pages/Roles'))
-const Settings = lazy(() => import('./pages/Settings'))
+const Dashboard = lazyWithRetry(() => import('./pages/Dashboard'))
+const Users = lazyWithRetry(() => import('./pages/Users'))
+const Samples = lazyWithRetry(() => import('./pages/Samples'))
+const Scan = lazyWithRetry(() => import('./pages/Scan'))
+const Dispatches = lazyWithRetry(() => import('./pages/Dispatches'))
+const Parcels = lazyWithRetry(() => import('./pages/Parcels'))
+const LiveMap = lazyWithRetry(() => import('./pages/LiveMap'))
+const Batches = lazyWithRetry(() => import('./pages/Batches'))
+const ShelfScanning = lazyWithRetry(() => import('./pages/ShelfScanning'))
+const Facilities = lazyWithRetry(() => import('./pages/Facilities'))
+const Roles = lazyWithRetry(() => import('./pages/Roles'))
+const Settings = lazyWithRetry(() => import('./pages/Settings'))
 
 function PageSpinner() {
   return (
@@ -51,6 +97,7 @@ function RequirePerm({ perm, children }: { perm: string; children: ReactNode }) 
 
 export default function App() {
   return (
+    <ErrorBoundary>
     <Routes>
       <Route path="/login" element={<Login />} />
       <Route
@@ -101,7 +148,7 @@ export default function App() {
         <Route
           path="/parcels"
           element={
-            <RequirePerm perm="samples.view">
+            <RequirePerm perm="parcels.view">
               <Suspense fallback={<PageSpinner />}>
                 <Parcels />
               </Suspense>
@@ -111,7 +158,7 @@ export default function App() {
         <Route
           path="/live-map"
           element={
-            <RequirePerm perm="samples.view">
+            <RequirePerm perm="livemap.view">
               <Suspense fallback={<PageSpinner />}>
                 <LiveMap />
               </Suspense>
@@ -121,7 +168,7 @@ export default function App() {
         <Route
           path="/batches"
           element={
-            <RequirePerm perm="samples.view">
+            <RequirePerm perm="batches.manage">
               <Suspense fallback={<PageSpinner />}>
                 <Batches />
               </Suspense>
@@ -179,5 +226,6 @@ export default function App() {
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
+    </ErrorBoundary>
   )
 }

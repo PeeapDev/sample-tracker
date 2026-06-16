@@ -4,6 +4,7 @@ import { Dispatch } from '../database/entities/dispatch.entity';
 import { EventLog } from '../database/entities/event-log.entity';
 import { Facility } from '../database/entities/facility.entity';
 import { Notification } from '../database/entities/notification.entity';
+import { PushSubscription } from '../database/entities/push-subscription.entity';
 import { Parcel } from '../database/entities/parcel.entity';
 import { ParcelEvent } from '../database/entities/parcel-event.entity';
 import { RiderLocation } from '../database/entities/rider-location.entity';
@@ -20,6 +21,7 @@ const entities = [
   EventLog,
   Facility,
   Notification,
+  PushSubscription,
   Parcel,
   ParcelEvent,
   RiderLocation,
@@ -31,9 +33,13 @@ const entities = [
 
 // We connect through Supabase's Session pooler (port 5432) because TypeORM's
 // prepared statements break on the Transaction pooler (6543). In serverless,
-// each warm instance keeps its own pool, so cap it at one connection to avoid
-// exhausting the session pooler as Vercel scales instances out.
-const extra = process.env.VERCEL ? { max: 1 } : {};
+// each warm instance keeps its own pool. A pool of 1 forced the dashboard's six
+// Promise.all() queries to serialize on a single connection (6× the remote-DB
+// round-trip → 30s timeouts on cold start), so allow a handful of concurrent
+// connections — enough to actually parallelize, still well under the pooler cap.
+const extra = process.env.VERCEL
+  ? { max: 5, connectionTimeoutMillis: 10000 }
+  : {};
 
 export default registerAs('database', () => {
   const supabaseUrl = process.env.SUPABASE_URL;

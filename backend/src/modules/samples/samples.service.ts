@@ -370,8 +370,10 @@ export class SamplesService {
       );
     }
     if (actor.role !== UserRole.ADMIN && actor.role !== step.role) {
+      const human = (s: string) => s.replace(/_/g, ' ');
       throw new ForbiddenException(
-        `This scan advances the sample to "${step.next}", which only a ${step.role} can perform.`,
+        `Not your step — sample ${sampleId} is at "${human(sample.status)}". ` +
+          `Its next scan (→ ${human(step.next)}) is done by a ${human(step.role)}, not a ${human(actor.role)}.`,
       );
     }
 

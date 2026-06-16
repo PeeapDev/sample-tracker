@@ -1,8 +1,9 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { IsNull, Repository } from 'typeorm';
 import { Notification } from '../../database/entities/notification.entity';
 import { NotificationChannel, NotificationType } from '../../database/enums';
+import { PushService } from './push.service';
 
 export interface CreateNotificationInput {
   type: NotificationType;
@@ -20,6 +21,7 @@ export class NotificationsService {
   constructor(
     @InjectRepository(Notification)
     private notificationRepository: Repository<Notification>,
+    private pushService: PushService,
   ) {}
 
   async createNotification(input: CreateNotificationInput): Promise<Notification> {
@@ -34,12 +36,40 @@ export class NotificationsService {
       await this.sendSms(input.userId, input.message);
     }
 
+    // Fire the Web Push so it reaches the device even when the app is closed.
+    // A specific recipient → their devices; a broadcast (no userId) → admins.
+    const payload = {
+      title: input.title,
+      body: input.message,
+      type: input.type,
+      sampleId: input.sampleId,
+    };
+    try {
+      if (saved.userId) {
+        await this.pushService.sendToUser(saved.userId, payload);
+      } else {
+        await this.pushService.sendToAdmins(payload);
+      }
+    } catch {
+      // push is best-effort; the in-app notification is already saved
+    }
+
     return saved;
   }
 
-  async findAll(userId?: string): Promise<Notification[]> {
-    const where: any = {};
-    if (userId) where.userId = userId;
+  // Admins also receive the network-wide "broadcast" copies (userId IS NULL)
+  // that every sample event fires — so the admin bell reflects all activity,
+  // not just notifications addressed to them personally.
+  private isAdmin(role?: string): boolean {
+    return role === 'admin';
+  }
+
+  async findAll(userId?: string, role?: string): Promise<Notification[]> {
+    const where = this.isAdmin(role)
+      ? [{ userId }, { userId: IsNull() }]
+      : userId
+        ? { userId }
+        : {};
 
     return this.notificationRepository.find({
       where,
@@ -49,9 +79,16 @@ export class NotificationsService {
     });
   }
 
-  async findUnread(userId: string): Promise<Notification[]> {
+  async findUnread(userId: string, role?: string): Promise<Notification[]> {
+    const where = this.isAdmin(role)
+      ? [
+          { userId, isRead: false },
+          { userId: IsNull(), isRead: false },
+        ]
+      : { userId, isRead: false };
+
     return this.notificationRepository.find({
-      where: { userId, isRead: false },
+      where,
       order: { createdAt: 'DESC' },
     });
   }
@@ -60,17 +97,29 @@ export class NotificationsService {
     await this.notificationRepository.update(id, { isRead: true });
   }
 
-  async markAllAsRead(userId: string): Promise<void> {
+  async markAllAsRead(userId: string, role?: string): Promise<void> {
     await this.notificationRepository.update(
       { userId, isRead: false },
       { isRead: true },
     );
+    // Admins also clear the broadcast copies they can see.
+    if (this.isAdmin(role)) {
+      await this.notificationRepository.update(
+        { userId: IsNull(), isRead: false },
+        { isRead: true },
+      );
+    }
   }
 
-  async getUnreadCount(userId: string): Promise<number> {
-    return this.notificationRepository.count({
-      where: { userId, isRead: false },
-    });
+  async getUnreadCount(userId: string, role?: string): Promise<number> {
+    const where = this.isAdmin(role)
+      ? [
+          { userId, isRead: false },
+          { userId: IsNull(), isRead: false },
+        ]
+      : { userId, isRead: false };
+
+    return this.notificationRepository.count({ where });
   }
 
   private async sendSms(userId: string, message: string): Promise<void> {

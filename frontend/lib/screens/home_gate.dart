@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/auth_provider.dart';
+import '../services/web_push.dart';
 import 'home_screen.dart';
 import 'onboarding_screen.dart';
 
@@ -18,6 +19,8 @@ class _HomeGateState extends State<HomeGate> {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) => _maybeOnboard());
+    // Register this device for web push (no-op off the web / if declined).
+    registerWebPush();
   }
 
   Future<void> _maybeOnboard() async {

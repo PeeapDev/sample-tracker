@@ -15,6 +15,10 @@
        phones). Required for the camera-mode scanner on the web build. Vendored
        locally (instead of a CDN) so the field PWA stays self-contained. -->
   <script src="zxing.min.js" type="application/javascript"></script>
+  <!-- Web Push helper: Dart calls window.nsrtmsSubscribePush(vapidKey) to
+       subscribe this device; the service worker (flutter_service_worker.js,
+       with appended push handlers) shows notifications when the app is closed. -->
+  <script src="push.js" type="application/javascript"></script>
   <script>
     if ('serviceWorker' in navigator) {
       window.addEventListener('load', function() {

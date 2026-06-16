@@ -1,15 +1,16 @@
 import { useEffect, useRef, useState, type ComponentType, type ReactNode } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { Html5Qrcode } from 'html5-qrcode'
 import {
   ScanLine,
   Camera,
-  CameraOff,
   Search,
   Zap,
   CheckCircle2,
   XCircle,
   RotateCcw,
   ArrowRight,
+  Clock,
   FlaskConical,
   Building2,
   Boxes,
@@ -18,6 +19,7 @@ import {
   Trash2,
 } from 'lucide-react'
 import { api, apiError } from '../lib/api'
+import { useAuth } from '../lib/auth'
 import { statusColor, statusLabel } from '../lib/ui'
 
 interface Sample {
@@ -55,20 +57,34 @@ interface ScanEntry {
 // Terminal states have no further scan step.
 const TERMINAL = new Set(['completed', 'lost'])
 
-// The collection → lab journey: each stage and where it heads next. Mirrors the
-// backend SCAN_FLOW so the UI can tell an operator where a scan sends a sample.
-const FLOW: Record<string, { next: string; destination: string; by: string }> = {
-  collected: { next: 'picked_up', destination: 'Picked up by a dispatcher → en route to the Hub', by: 'Dispatcher' },
-  picked_up: { next: 'hub_received', destination: 'Received at the Regional Hub', by: 'Hub Officer' },
-  hub_received: { next: 'in_transit', destination: 'Dispatched → en route to the Laboratory', by: 'Dispatcher' },
-  in_transit: { next: 'lab_received', destination: 'Received at the Laboratory', by: 'Lab Officer' },
-  lab_received: { next: 'analysis_queue', destination: 'Queued for analysis', by: 'Lab Officer' },
-  analysis_queue: { next: 'completed', destination: 'Analysis complete — results ready', by: 'Lab Officer' },
+// The collection → lab journey: each stage, where it heads next, and which role
+// performs that next scan. Mirrors the backend SCAN_FLOW so the UI only offers
+// the action when it's actually this user's turn.
+const FLOW: Record<string, { next: string; destination: string; by: string; role: string }> = {
+  collected: { next: 'picked_up', destination: 'Picked up by a dispatcher → en route to the Hub', by: 'Dispatcher', role: 'dispatcher' },
+  picked_up: { next: 'hub_received', destination: 'Received at the Regional Hub', by: 'Hub Officer', role: 'hub_officer' },
+  hub_received: { next: 'in_transit', destination: 'Dispatched → en route to the Laboratory', by: 'Dispatcher', role: 'dispatcher' },
+  in_transit: { next: 'lab_received', destination: 'Received at the Laboratory', by: 'Lab Officer', role: 'lab_officer' },
+  lab_received: { next: 'analysis_queue', destination: 'Queued for analysis', by: 'Lab Officer', role: 'lab_officer' },
+  analysis_queue: { next: 'completed', destination: 'Analysis complete — results ready', by: 'Lab Officer', role: 'lab_officer' },
+}
+
+// Can this role perform the next scan for a sample at the given status? Admin
+// can always scan; otherwise the role must match the stage's responsible role.
+function canRoleAdvance(role: string, status: string): boolean {
+  return role === 'admin' || FLOW[status]?.role === role
 }
 
 const SCANNER_ID = 'qr-scanner-region'
 
 export default function Scan() {
+  // Reached via the header "Accept" button (?accept=1): a receiving officer
+  // confirming goods handed over by a dispatcher/rider. Same scan-to-advance,
+  // just framed as accepting/receiving rather than generic scanning.
+  const [searchParams] = useSearchParams()
+  const acceptMode = searchParams.get('accept') === '1'
+  const myRole = useAuth().user?.role ?? ''
+
   const scannerRef = useRef<Html5Qrcode | null>(null)
   const lastCodeRef = useRef<string>('')
 
@@ -92,8 +108,9 @@ export default function Scan() {
     setHistory((h) => [row, ...h].slice(0, 50))
   }
 
-  // Stop the camera when leaving the page.
+  // Open the camera as soon as the page loads, and stop it on the way out.
   useEffect(() => {
+    void startCamera()
     return () => {
       void stopCamera()
     }
@@ -101,6 +118,7 @@ export default function Scan() {
   }, [])
 
   async function startCamera() {
+    if (scannerRef.current) return // already running
     setCamError(null)
     setStarting(true)
     try {
@@ -267,12 +285,13 @@ export default function Scan() {
     <div className="space-y-6">
       <div>
         <h2 className="flex items-center gap-2 text-2xl font-extrabold tracking-tight">
-          <ScanLine className="text-brand" /> Scan a Sample or Box
+          <ScanLine className="text-brand" /> {acceptMode ? 'Accept a Delivery' : 'Scan a Sample or Box'}
         </h2>
-        <p className="text-sm text-slate-400">
-          Point your camera at any sample or box (BOX-…) QR to see where it is and where it goes
-          next — then advance it. Works on your phone too (open this page over HTTPS).
-        </p>
+        {acceptMode && (
+          <p className="text-sm text-slate-400">
+            Scan what the dispatcher or rider hands over to confirm it arrived at your facility.
+          </p>
+        )}
       </div>
 
       <div className="flex flex-col gap-6 xl:flex-row">
@@ -280,9 +299,9 @@ export default function Scan() {
         {/* Scanner / input */}
         <div className="card space-y-4">
           {/* The scanner div is owned by html5-qrcode (it injects the <video>),
-              so React must not render children into it. The off-state is a
-              sibling overlay instead, to avoid DOM-reconciliation conflicts. */}
-          <div className="relative aspect-square w-full overflow-hidden rounded-2xl bg-slate-900">
+              so React must not render children into it. The overlay below is a
+              sibling, to avoid DOM-reconciliation conflicts. Camera auto-starts. */}
+          <div className="relative mx-auto aspect-square w-full max-w-[280px] overflow-hidden rounded-2xl bg-slate-900">
             <div
               id={SCANNER_ID}
               className="h-full w-full [&>video]:h-full [&>video]:w-full [&>video]:object-cover"
@@ -290,9 +309,9 @@ export default function Scan() {
             {!cameraOn && (
               <div className="pointer-events-none absolute inset-0 grid place-items-center p-6 text-center">
                 <div className="space-y-3">
-                  <ScanLine size={48} className="mx-auto text-slate-500" />
+                  <ScanLine size={40} className="mx-auto text-slate-500" />
                   <p className="text-sm text-slate-400">
-                    {starting ? 'Starting camera…' : 'Camera is off'}
+                    {camError ? 'Camera unavailable' : 'Starting camera…'}
                   </p>
                 </div>
               </div>
@@ -300,27 +319,16 @@ export default function Scan() {
           </div>
 
           {camError && (
-            <div className="flex items-start gap-2 rounded-xl border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-500">
-              <XCircle size={16} className="mt-0.5 shrink-0" />
-              <span>{camError}</span>
+            <div className="space-y-2">
+              <div className="flex items-start gap-2 rounded-xl border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-500">
+                <XCircle size={16} className="mt-0.5 shrink-0" />
+                <span>{camError}</span>
+              </div>
+              <button onClick={() => void startCamera()} disabled={starting} className="btn-ghost w-full">
+                <Camera size={16} /> {starting ? 'Starting…' : 'Try again'}
+              </button>
             </div>
           )}
-
-          <div className="flex gap-2">
-            {cameraOn ? (
-              <button onClick={() => void stopCamera()} className="btn-ghost flex-1">
-                <CameraOff size={16} /> Stop camera
-              </button>
-            ) : (
-              <button
-                onClick={() => void startCamera()}
-                disabled={starting}
-                className="btn-primary flex-1"
-              >
-                <Camera size={16} /> {starting ? 'Starting…' : 'Start camera'}
-              </button>
-            )}
-          </div>
 
           {/* Manual fallback */}
           <div className="border-t pt-4 dark:border-ink-700">
@@ -377,6 +385,8 @@ export default function Scan() {
             <SampleResult
               sample={result.sample}
               busy={busy}
+              acceptMode={acceptMode}
+              myRole={myRole}
               onAdvance={() => void advanceSample(result.sample)}
               onReset={reset}
             />
@@ -386,6 +396,8 @@ export default function Scan() {
             <BoxResult
               box={result.box}
               busy={busy}
+              acceptMode={acceptMode}
+              myRole={myRole}
               onAdvance={() => void advanceBox(result.box)}
               onReset={reset}
             />
@@ -483,15 +495,22 @@ function RouteStrip({ status }: { status: string }) {
 function SampleResult({
   sample,
   busy,
+  acceptMode,
+  myRole,
   onAdvance,
   onReset,
 }: {
   sample: Sample
   busy: boolean
+  acceptMode?: boolean
+  myRole: string
   onAdvance: () => void
   onReset: () => void
 }) {
-  const canAdvance = !TERMINAL.has(sample.status)
+  const active = !TERMINAL.has(sample.status)
+  // Only offer the action when this sample is actually at this user's stage.
+  const myTurn = canRoleAdvance(myRole, sample.status)
+  const canAdvance = active && myTurn
   return (
     <div className="space-y-4">
       <div className="flex items-start justify-between gap-3">
@@ -520,7 +539,30 @@ function SampleResult({
 
       <RouteStrip status={sample.status} />
 
-      <Actions canAdvance={canAdvance} busy={busy} status={sample.status} onAdvance={onAdvance} onReset={onReset} />
+      {active && !myTurn ? (
+        <div className="space-y-3 border-t pt-4 dark:border-ink-700">
+          <div className="flex items-start gap-2 rounded-xl border border-amber-500/30 bg-amber-500/10 px-3 py-2.5 text-sm text-amber-600 dark:text-amber-400">
+            <Clock size={16} className="mt-0.5 shrink-0" />
+            <span>
+              Not your step yet — this sample is at <b>{statusLabel(sample.status)}</b>. Its next
+              scan is done by a <b>{FLOW[sample.status]?.by ?? 'different role'}</b>, so you can't
+              advance it from here.
+            </span>
+          </div>
+          <button onClick={onReset} className="btn-ghost w-full">
+            <RotateCcw size={16} /> New scan
+          </button>
+        </div>
+      ) : (
+        <Actions
+          canAdvance={canAdvance}
+          busy={busy}
+          status={sample.status}
+          advanceLabel={acceptMode ? 'Accept here' : 'Advance to next stage'}
+          onAdvance={onAdvance}
+          onReset={onReset}
+        />
+      )}
     </div>
   )
 }
@@ -528,18 +570,24 @@ function SampleResult({
 function BoxResult({
   box,
   busy,
+  acceptMode,
+  myRole,
   onAdvance,
   onReset,
 }: {
   box: Box
   busy: boolean
+  acceptMode?: boolean
+  myRole: string
   onAdvance: () => void
   onReset: () => void
 }) {
   const samples = box.samples ?? []
   const statuses = Array.from(new Set(samples.map((s) => s.status)))
-  // A box can advance if any sample inside still has a next step.
-  const canAdvance = samples.some((s) => !TERMINAL.has(s.status))
+  const active = samples.some((s) => !TERMINAL.has(s.status))
+  // The box advances if any sample inside is at this user's stage.
+  const myTurn = samples.some((s) => canRoleAdvance(myRole, s.status))
+  const canAdvance = active && myTurn
 
   return (
     <div className="space-y-4">
@@ -588,14 +636,26 @@ function BoxResult({
         </div>
       )}
 
-      <Actions
-        canAdvance={canAdvance}
-        busy={busy}
-        status={statuses.length === 1 ? statuses[0] : 'mixed'}
-        advanceLabel="Advance whole box"
-        onAdvance={onAdvance}
-        onReset={onReset}
-      />
+      {active && !myTurn ? (
+        <div className="space-y-3 border-t pt-4 dark:border-ink-700">
+          <div className="flex items-start gap-2 rounded-xl border border-amber-500/30 bg-amber-500/10 px-3 py-2.5 text-sm text-amber-600 dark:text-amber-400">
+            <Clock size={16} className="mt-0.5 shrink-0" />
+            <span>Not your step — none of the samples in this box are waiting on you to scan.</span>
+          </div>
+          <button onClick={onReset} className="btn-ghost w-full">
+            <RotateCcw size={16} /> New scan
+          </button>
+        </div>
+      ) : (
+        <Actions
+          canAdvance={canAdvance}
+          busy={busy}
+          status={statuses.length === 1 ? statuses[0] : 'mixed'}
+          advanceLabel={acceptMode ? 'Accept whole box' : 'Advance whole box'}
+          onAdvance={onAdvance}
+          onReset={onReset}
+        />
+      )}
     </div>
   )
 }

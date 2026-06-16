@@ -10,12 +10,16 @@ export interface Permission {
 
 export const PERMISSIONS: Permission[] = [
   { key: 'dashboard.view', label: 'View dashboard & analytics', group: 'Dashboard' },
+  { key: 'dashboard.network', label: 'View full network dashboard', group: 'Dashboard' },
   { key: 'samples.view', label: 'View samples', group: 'Samples' },
   { key: 'samples.manage', label: 'Register & update samples', group: 'Samples' },
   { key: 'samples.scan', label: 'Scan samples (camera/QR)', group: 'Samples' },
   { key: 'batches.manage', label: 'Create & sort batches (re-batching)', group: 'Samples' },
   { key: 'dispatches.view', label: 'View dispatches', group: 'Dispatches' },
   { key: 'dispatches.manage', label: 'Create & update dispatches', group: 'Dispatches' },
+  { key: 'parcels.view', label: 'View/scan parcels', group: 'Parcels' },
+  { key: 'parcels.register', label: 'Register return parcels', group: 'Parcels' },
+  { key: 'livemap.view', label: 'View live rider map', group: 'Dispatches' },
   { key: 'users.view', label: 'View users', group: 'Users' },
   { key: 'users.manage', label: 'Create, edit & deactivate users', group: 'Users' },
   { key: 'roles.manage', label: 'Manage roles & permissions', group: 'Administration' },
@@ -41,10 +45,10 @@ export type Matrix = Record<string, string[]>
 
 const DEFAULT_MATRIX: Matrix = {
   admin: PERMISSIONS.map((p) => p.key),
-  collector: ['dashboard.view', 'samples.view', 'samples.manage', 'samples.scan', 'batches.manage'],
-  dispatcher: ['dashboard.view', 'samples.view', 'samples.scan', 'dispatches.view', 'dispatches.manage'],
-  hub_officer: ['dashboard.view', 'samples.view', 'samples.scan', 'batches.manage', 'dispatches.view'],
-  lab_officer: ['dashboard.view', 'samples.view', 'samples.scan', 'batches.manage'],
+  collector: ['dashboard.view', 'samples.view', 'samples.manage', 'samples.scan', 'batches.manage', 'parcels.view'],
+  dispatcher: ['dashboard.view', 'samples.view', 'samples.scan', 'dispatches.view', 'dispatches.manage', 'parcels.view'],
+  hub_officer: ['dashboard.view', 'samples.view', 'samples.scan', 'batches.manage', 'dispatches.view', 'parcels.view', 'parcels.register'],
+  lab_officer: ['dashboard.view', 'samples.view', 'samples.scan', 'batches.manage', 'parcels.view', 'parcels.register'],
 }
 
 interface RbacState {

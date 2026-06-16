@@ -27,10 +27,10 @@ import { useAuth } from '../lib/auth'
 import { useTheme } from '../lib/theme'
 import { useRbac } from '../lib/rbac'
 import { useOnline } from '../lib/useOnline'
-import { useOnboarding } from '../lib/useOnboarding'
+import { useTour } from '../lib/useTour'
 import { cn, roleMeta } from '../lib/ui'
 import { NotificationsBell } from './NotificationsBell'
-import { OnboardingWizard } from './OnboardingWizard'
+import { SyncStatus } from './SyncStatus'
 
 interface NavItem {
   to: string
@@ -49,21 +49,31 @@ const NAV: NavItem[] = [
   { to: '/samples', label: 'Samples', icon: TestTubes, perm: 'samples.view', section: 'main' },
   { to: '/scan', label: 'Scan Sample', icon: QrCode, perm: 'samples.scan', section: 'main' },
   { to: '/dispatches', label: 'Dispatches', icon: Truck, perm: 'dispatches.view', section: 'main' },
-  { to: '/parcels', label: 'Parcels', icon: Package, perm: 'samples.view', section: 'main' },
+  { to: '/parcels', label: 'Parcels', icon: Package, perm: 'parcels.view', section: 'main' },
   {
     to: '/live-map',
     label: 'Live Map',
     icon: MapIcon,
-    perm: 'dispatches.view',
-    roles: ['admin', 'dispatcher', 'hub_officer', 'lab_officer'],
+    perm: 'livemap.view',
     section: 'main',
   },
-  { to: '/batches', label: 'Batches & Boxes', icon: Boxes, perm: 'samples.view', section: 'main' },
+  { to: '/batches', label: 'Batches & Boxes', icon: Boxes, perm: 'batches.manage', section: 'main' },
   { to: '/users', label: 'Users', icon: UsersIcon, perm: 'users.view', section: 'main' },
   { to: '/facilities', label: 'Facilities & Hubs', icon: Building2, perm: 'settings.manage', section: 'admin' },
   { to: '/roles', label: 'Roles & Permissions', icon: ShieldCheck, perm: 'roles.manage', section: 'admin' },
   { to: '/settings', label: 'Settings', icon: SettingsIcon, perm: 'settings.manage', section: 'admin' },
 ]
+
+// Maps a nav route to the data-tour marker the coach-mark tour anchors to.
+// Only routes referenced by the tour need an entry; the rest stay undefined.
+const TOUR_KEYS: Record<string, string> = {
+  '/': 'dashboard',
+  '/samples': 'samples',
+  '/scan': 'scan',
+  '/dispatches': 'dispatches',
+  '/parcels': 'parcels',
+  '/roles': 'roles',
+}
 
 const TITLES: Record<string, string> = {
   '/': 'Dashboard',
@@ -85,7 +95,7 @@ export default function AdminLayout() {
   const { theme, toggle } = useTheme()
   const { can } = useRbac()
   const online = useOnline()
-  const onboarding = useOnboarding()
+  const tour = useTour()
   const [open, setOpen] = useState(false)
   const location = useLocation()
   const navigate = useNavigate()
@@ -109,6 +119,7 @@ export default function AdminLayout() {
         key={item.to}
         to={item.to}
         end={item.end}
+        data-tour={TOUR_KEYS[item.to]}
         onClick={() => setOpen(false)}
         className={({ isActive }) =>
           cn(
@@ -171,9 +182,10 @@ export default function AdminLayout() {
 
       <div className="border-t p-4 dark:border-ink-700">
         <button
+          data-tour="help"
           onClick={() => {
-            onboarding.open()
             setOpen(false)
+            tour.replay()
           }}
           title="How it works — replay the quick tour"
           className="mb-3 flex w-full items-center gap-3 rounded-xl px-3.5 py-2.5 text-sm font-medium text-slate-500 transition hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-ink-800"
@@ -248,9 +260,11 @@ export default function AdminLayout() {
             </span>
           )}
           <div className="ml-auto flex items-center gap-2">
+            <SyncStatus />
             {canAccept && (
               <button
-                onClick={() => navigate('/scan')}
+                data-tour="accept"
+                onClick={() => navigate('/scan?accept=1')}
                 title="Accept a delivery — scan the sample or box to confirm it arrived here"
                 className="inline-flex items-center gap-2 rounded-lg bg-brand-600 px-3.5 py-2.5 text-sm font-semibold text-white transition hover:bg-brand-700"
               >
@@ -275,8 +289,6 @@ export default function AdminLayout() {
           </div>
         </main>
       </div>
-
-      {onboarding.show && <OnboardingWizard onClose={onboarding.close} />}
     </div>
   )
 }

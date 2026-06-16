@@ -98,6 +98,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
         role == 'hub_officer' ||
         role == 'lab_officer' ||
         role == 'admin';
+    // Only roles granted the network dashboard see the org-wide metrics; others
+    // get a focused role landing instead of the admin overview.
+    final canNetwork = auth.can('dashboard.network');
     final maxWidth = context.isWide ? 1320.0 : double.infinity;
     final pad = context.responsive(mobile: 16.0, tablet: 24.0, desktop: 32.0);
 
@@ -128,13 +131,16 @@ class _DashboardScreenState extends State<DashboardScreen> {
                       : null,
                 ),
                 const SizedBox(height: 24),
-                _KpiGrid(operational: dashboard.operational!),
-                const SizedBox(height: 16),
-                _NetworkStrip(management: dashboard.management),
-                const SizedBox(height: 16),
-                _ChartsSection(dashboard: dashboard),
-                const SizedBox(height: 16),
-                _BottomSection(dashboard: dashboard),
+                if (canNetwork) ...[
+                  _KpiGrid(operational: dashboard.operational!),
+                  const SizedBox(height: 16),
+                  _NetworkStrip(management: dashboard.management),
+                  const SizedBox(height: 16),
+                  _ChartsSection(dashboard: dashboard),
+                  const SizedBox(height: 16),
+                  _BottomSection(dashboard: dashboard),
+                ] else
+                  _RoleLanding(role: role),
               ],
             ),
           ),
@@ -147,6 +153,80 @@ class _DashboardScreenState extends State<DashboardScreen> {
 // ---------------------------------------------------------------------------
 // Header
 // ---------------------------------------------------------------------------
+/// Shown on the dashboard to roles without the network view — a focused, plain
+/// landing that points them at what they can actually do (vs the admin metrics).
+class _RoleLanding extends StatelessWidget {
+  const _RoleLanding({required this.role});
+  final String role;
+
+  List<(IconData, String)> _tipsFor(String role) {
+    switch (role) {
+      case 'collector':
+        return [
+          (Icons.science_outlined,
+              'Register new samples in the Samples tab — each gets a QR instantly.'),
+          (Icons.qr_code_scanner,
+              'Use Scan to look up any sample and see where it is.'),
+        ];
+      case 'dispatcher':
+        return [
+          (Icons.qr_code_scanner,
+              'Scan samples and boxes to pick up and hand off — your location is shared while on a trip.'),
+          (Icons.local_shipping_outlined,
+              'Carry return parcels (PCL-…) and scan them in at the facility.'),
+        ];
+      case 'hub_officer':
+      case 'lab_officer':
+        return [
+          (Icons.inventory_2_outlined,
+              'Scan arriving samples and boxes to receive them here.'),
+          (Icons.local_shipping_outlined,
+              'Register return parcels going back out to facilities.'),
+        ];
+      default:
+        return [
+          (Icons.qr_code_scanner,
+              'Use the tabs below to scan and view samples.'),
+        ];
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final tips = _tipsFor(role);
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.primaryContainer.withValues(alpha: 0.35),
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('Here’s what you can do',
+              style: theme.textTheme.titleMedium
+                  ?.copyWith(fontWeight: FontWeight.w700)),
+          const SizedBox(height: 12),
+          for (final t in tips)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 6),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Icon(t.$1, size: 20, color: theme.colorScheme.primary),
+                  const SizedBox(width: 12),
+                  Expanded(child: Text(t.$2, style: theme.textTheme.bodyMedium)),
+                ],
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
 class _Header extends StatelessWidget {
   const _Header({
     required this.name,

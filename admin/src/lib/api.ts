@@ -1,9 +1,18 @@
-import axios from 'axios'
+import axios, { type InternalAxiosRequestConfig } from 'axios'
+import { cacheGet, cacheSet } from './idb'
+import { enqueue } from './outbox'
 
 export const API_BASE =
   import.meta.env.VITE_API_BASE ?? 'http://localhost:3000/api/v1'
 
 export const api = axios.create({ baseURL: API_BASE })
+
+// Stable key for caching a GET (path + query) in IndexedDB.
+function cacheKey(config: InternalAxiosRequestConfig): string {
+  const m = (config.method ?? 'get').toLowerCase()
+  const p = config.params ? `?${JSON.stringify(config.params)}` : ''
+  return `${m}:${config.url}${p}`
+}
 
 const ACCESS = 'nsrtms_access'
 const REFRESH = 'nsrtms_refresh'
@@ -45,10 +54,16 @@ async function refreshAccess(): Promise<string | null> {
 }
 
 api.interceptors.response.use(
-  (res) => res,
+  (res) => {
+    // Mirror successful GETs into IndexedDB so they can be served offline.
+    if ((res.config.method ?? 'get').toLowerCase() === 'get') {
+      void cacheSet(cacheKey(res.config as InternalAxiosRequestConfig), res.data)
+    }
+    return res
+  },
   async (error) => {
-    const original = error.config
-    if (error.response?.status === 401 && !original._retry) {
+    const original = error.config as InternalAxiosRequestConfig & { _retry?: boolean }
+    if (error.response?.status === 401 && original && !original._retry) {
       original._retry = true
       refreshing = refreshing ?? refreshAccess()
       const token = await refreshing
@@ -58,6 +73,54 @@ api.interceptors.response.use(
         return api(original)
       }
     }
+
+    // No response = offline / server unreachable. Serve GETs from the IndexedDB
+    // cache, and queue writes to replay on reconnect.
+    if (!error.response && original) {
+      const method = (original.method ?? 'get').toLowerCase()
+      if (method === 'get') {
+        const cached = await cacheGet<unknown>(cacheKey(original))
+        if (cached) {
+          return {
+            data: cached.data,
+            status: 200,
+            statusText: 'OK (offline cache)',
+            headers: {},
+            config: original,
+            request: null,
+            fromCache: true,
+          }
+        }
+      } else if (['post', 'put', 'patch', 'delete'].includes(method)) {
+        // Never queue auth flows — they must hit the network live.
+        if (!String(original.url ?? '').includes('/auth/')) {
+          let body: unknown = original.data
+          if (typeof body === 'string') {
+            try {
+              body = JSON.parse(body)
+            } catch {
+              /* leave as-is */
+            }
+          }
+          await enqueue({
+            method,
+            url: original.url ?? '',
+            body,
+            label: `${method.toUpperCase()} ${original.url ?? ''}`,
+          })
+          return {
+            data: { queued: true, offline: true },
+            status: 202,
+            statusText: 'Queued offline',
+            headers: {},
+            config: original,
+            request: null,
+            queued: true,
+          }
+        }
+      }
+    }
+
     return Promise.reject(error)
   },
 )

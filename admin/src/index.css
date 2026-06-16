@@ -109,6 +109,110 @@
   box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3);
 }
 
+/* ── Coach-mark product tour (driver.js) ──────────────────────────────────
+   Theme the spotlight popover to match the app: rounded card, brand-green
+   accent, and a dark surface under .dark. */
+.driver-popover.nsrtms-tour {
+  background: #ffffff;
+  color: #0f172a;
+  border-radius: 16px;
+  border: 1px solid rgba(148, 163, 184, 0.25);
+  box-shadow: 0 18px 48px rgba(2, 6, 12, 0.28);
+  max-width: 320px;
+  padding: 20px;
+}
+html.dark .driver-popover.nsrtms-tour {
+  background: #161e27; /* ink-850 */
+  color: #f1f5f9;
+  border-color: #222c38; /* ink-700 */
+  box-shadow: 0 18px 48px rgba(0, 0, 0, 0.55);
+}
+.driver-popover.nsrtms-tour .driver-popover-title {
+  font-size: 1.0625rem;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+  margin-bottom: 6px;
+}
+.driver-popover.nsrtms-tour .driver-popover-description {
+  font-size: 0.875rem;
+  line-height: 1.55;
+  color: #64748b;
+}
+html.dark .driver-popover.nsrtms-tour .driver-popover-description {
+  color: #94a3b8;
+}
+.driver-popover.nsrtms-tour .driver-popover-progress-text {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: #94a3b8;
+}
+.driver-popover.nsrtms-tour .driver-popover-footer button {
+  border-radius: 10px;
+  font-weight: 600;
+  font-size: 0.8125rem;
+  text-shadow: none;
+  padding: 7px 14px;
+  border: 1px solid transparent;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+/* Previous / close-ish secondary buttons */
+.driver-popover.nsrtms-tour .driver-popover-prev-btn {
+  background: transparent;
+  color: #64748b;
+  border-color: rgba(148, 163, 184, 0.4);
+}
+.driver-popover.nsrtms-tour .driver-popover-prev-btn:hover {
+  background: rgba(148, 163, 184, 0.12);
+}
+html.dark .driver-popover.nsrtms-tour .driver-popover-prev-btn {
+  color: #cbd5e1;
+  border-color: #2b3645;
+}
+html.dark .driver-popover.nsrtms-tour .driver-popover-prev-btn:hover {
+  background: #1a222c;
+}
+/* Next / Done primary buttons — brand green */
+.driver-popover.nsrtms-tour .driver-popover-next-btn {
+  background: #16a34a; /* brand-600 */
+  color: #ffffff;
+}
+.driver-popover.nsrtms-tour .driver-popover-next-btn:hover {
+  background: #15803d; /* brand-700 */
+}
+.driver-popover.nsrtms-tour .driver-popover-close-btn {
+  color: #94a3b8;
+}
+.driver-popover.nsrtms-tour .driver-popover-close-btn:hover {
+  color: #ef4444;
+}
+.driver-popover.nsrtms-tour .driver-popover-arrow {
+  border-color: transparent;
+}
+.driver-popover.nsrtms-tour.driver-popover-arrow-side-right .driver-popover-arrow {
+  border-right-color: #ffffff;
+}
+html.dark .driver-popover.nsrtms-tour.driver-popover-arrow-side-right .driver-popover-arrow {
+  border-right-color: #161e27;
+}
+.driver-popover.nsrtms-tour.driver-popover-arrow-side-left .driver-popover-arrow {
+  border-left-color: #ffffff;
+}
+html.dark .driver-popover.nsrtms-tour.driver-popover-arrow-side-left .driver-popover-arrow {
+  border-left-color: #161e27;
+}
+.driver-popover.nsrtms-tour.driver-popover-arrow-side-top .driver-popover-arrow {
+  border-top-color: #ffffff;
+}
+html.dark .driver-popover.nsrtms-tour.driver-popover-arrow-side-top .driver-popover-arrow {
+  border-top-color: #161e27;
+}
+.driver-popover.nsrtms-tour.driver-popover-arrow-side-bottom .driver-popover-arrow {
+  border-bottom-color: #ffffff;
+}
+html.dark .driver-popover.nsrtms-tour.driver-popover-arrow-side-bottom .driver-popover-arrow {
+  border-bottom-color: #161e27;
+}
+
 .recharts-default-tooltip {
   border-radius: 12px !important;
 }
