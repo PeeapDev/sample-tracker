@@ -1,4 +1,5 @@
 import { useEffect, useState, type FormEvent, type ReactNode } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { Search, RefreshCw, FlaskConical, Boxes, CheckSquare, Square, Loader2, X, Plus, Printer } from 'lucide-react'
 import { api, apiError } from '../lib/api'
 import { getCache, setCache, hasCache, clearCache } from '../lib/cache'
@@ -53,7 +54,25 @@ export default function Samples() {
   const [status, setStatus] = useState('all')
   const [page, setPage] = useState(1)
   const [reloadNonce, setReloadNonce] = useState(0)
-  const [selected, setSelected] = useState<SampleRow | null>(null)
+  const [searchParams, setSearchParams] = useSearchParams()
+  const [selected, setSelected] = useState<SampleRow | null>(
+    () => (searchParams.get('open') ? ({ id: searchParams.get('open') } as SampleRow) : null),
+  )
+
+  // Opening a sample notification deep-links here with ?open=<id>; the detail
+  // modal fetches the full record from just the id.
+  useEffect(() => {
+    const id = searchParams.get('open')
+    if (id) setSelected({ id } as SampleRow)
+  }, [searchParams])
+
+  function closeDetail() {
+    setSelected(null)
+    if (searchParams.has('open')) {
+      searchParams.delete('open')
+      setSearchParams(searchParams, { replace: true })
+    }
+  }
 
   const { user } = useAuth()
   const { can } = useRbac()
@@ -365,7 +384,7 @@ export default function Samples() {
         <SampleDetailModal
           sampleId={selected.id}
           fallback={selected}
-          onClose={() => setSelected(null)}
+          onClose={closeDetail}
         />
       )}
 

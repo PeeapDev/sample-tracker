@@ -142,40 +142,107 @@ export class DispatchService {
     const dispatch = await this.findById(id);
 
     const updateData: any = { status: dto.status };
+    let advanced = 0;
 
+    // A dispatch status change nudges its samples forward, but ONLY along the
+    // legal sequence: each transition advances a sample solely from its expected
+    // prior stage (a guarded WHERE). This makes it impossible to skip a stage —
+    // e.g. marking a dispatch "delivered" can never jump a sample past the hub
+    // straight to the lab; it must have been scanned as hub_received first.
     switch (dto.status) {
       case DispatchStatus.PICKED_UP:
         updateData.pickupTime = new Date();
-        await this.sampleRepository.update(
-          { dispatchId: id },
-          { status: SampleStatus.PICKED_UP, pickedUpAt: new Date() },
+        advanced = await this.advanceDispatchSamples(
+          id,
+          SampleStatus.COLLECTED,
+          SampleStatus.PICKED_UP,
+          { pickedUpAt: new Date() },
+          userId,
         );
         break;
       case DispatchStatus.IN_TRANSIT:
-        await this.sampleRepository.update(
-          { dispatchId: id },
-          { status: SampleStatus.IN_TRANSIT, dispatchedAt: new Date() },
+        advanced = await this.advanceDispatchSamples(
+          id,
+          SampleStatus.HUB_RECEIVED,
+          SampleStatus.IN_TRANSIT,
+          { dispatchedAt: new Date() },
+          userId,
         );
         break;
       case DispatchStatus.DELIVERED:
         updateData.deliveryTime = new Date();
-        await this.sampleRepository.update(
-          { dispatchId: id },
-          { status: SampleStatus.LAB_RECEIVED, labReceivedAt: new Date() },
+        advanced = await this.advanceDispatchSamples(
+          id,
+          SampleStatus.IN_TRANSIT,
+          SampleStatus.LAB_RECEIVED,
+          { labReceivedAt: new Date() },
+          userId,
         );
         break;
     }
 
     await this.dispatchRepository.update(id, updateData);
 
+    // Surface when a dispatch advanced fewer samples than it carries — the
+    // shortfall is samples still waiting on an out-of-sequence scan (e.g. the
+    // hub hasn't received them yet), which is exactly what we now refuse to skip.
+    const skipped =
+      dto.status !== DispatchStatus.ASSIGNED &&
+      dto.status !== DispatchStatus.CANCELLED &&
+      dispatch.sampleCount != null
+        ? dispatch.sampleCount - advanced
+        : 0;
+    const note =
+      skipped > 0
+        ? ` ${advanced}/${dispatch.sampleCount} samples advanced; ${skipped} still awaiting an in-sequence scan.`
+        : '';
+
     await this.notificationsService.createNotification({
       type: NotificationType.SAMPLE_PICKED_UP,
       title: 'Dispatch Status Updated',
-      message: `Dispatch ${dispatch.dispatchId} status: ${dto.status}`,
+      message: `Dispatch ${dispatch.dispatchId} status: ${dto.status}.${note}`,
       dispatchId: id,
     });
 
     return this.findById(id);
+  }
+
+  /**
+   * Advance every sample on a dispatch that is at [from] to [to], stamping the
+   * stage timestamp and writing a chain-of-custody EventLog for each one moved.
+   * Samples not at [from] are left untouched, so the sequence can never be
+   * skipped. Returns how many actually advanced.
+   */
+  private async advanceDispatchSamples(
+    dispatchId: string,
+    from: SampleStatus,
+    to: SampleStatus,
+    extra: Record<string, any>,
+    userId: string,
+  ): Promise<number> {
+    const eligible = await this.sampleRepository.find({
+      where: { dispatchId, status: from },
+      select: { id: true, facilityId: true },
+    });
+    if (eligible.length === 0) return 0;
+
+    await this.sampleRepository.update(
+      { id: In(eligible.map((s) => s.id)) },
+      { status: to, ...extra },
+    );
+
+    await this.eventLogRepository.save(
+      eligible.map((s) =>
+        this.eventLogRepository.create({
+          sampleId: s.id,
+          event: to,
+          actorId: userId,
+          facilityId: s.facilityId,
+          metadata: { dispatchId, previousStatus: from, viaDispatch: true },
+        }),
+      ),
+    );
+    return eligible.length;
   }
 
   async getDispatchSamples(id: string): Promise<Sample[]> {

@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { RefreshCw, Truck, PackageOpen } from 'lucide-react'
 import { api, apiError } from '../lib/api'
 import { getCache, setCache, hasCache } from '../lib/cache'
@@ -34,7 +35,22 @@ export default function Dispatches() {
   const [loading, setLoading] = useState(!hasCache('dispatches'))
   const [refreshing, setRefreshing] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [openId, setOpenId] = useState<string | null>(null)
+  const [searchParams, setSearchParams] = useSearchParams()
+  const [openId, setOpenId] = useState<string | null>(searchParams.get('open'))
+
+  // Opening a dispatch notification deep-links here with ?open=<id>.
+  useEffect(() => {
+    const id = searchParams.get('open')
+    if (id) setOpenId(id)
+  }, [searchParams])
+
+  function closeDetail() {
+    setOpenId(null)
+    if (searchParams.has('open')) {
+      searchParams.delete('open')
+      setSearchParams(searchParams, { replace: true })
+    }
+  }
 
   async function load() {
     setRefreshing(true)
@@ -145,7 +161,7 @@ export default function Dispatches() {
         </div>
       )}
 
-      {openId && <DispatchDetailModal dispatchId={openId} onClose={() => setOpenId(null)} />}
+      {openId && <DispatchDetailModal dispatchId={openId} onClose={closeDetail} />}
     </div>
   )
 }

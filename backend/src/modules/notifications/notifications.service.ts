@@ -43,6 +43,14 @@ export class NotificationsService {
       body: input.message,
       type: input.type,
       sampleId: input.sampleId,
+      dispatchId: input.dispatchId,
+      // Where clicking the OS notification should land — mirrors the in-app
+      // routing (dispatch events open the dispatch, otherwise the sample).
+      url: input.dispatchId
+        ? `/dispatches?open=${input.dispatchId}`
+        : input.sampleId
+          ? `/samples?open=${input.sampleId}`
+          : '/',
     };
     try {
       if (saved.userId) {

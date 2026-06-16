@@ -56,6 +56,7 @@ class ErrorBoundary extends Component<{ children: ReactNode }, { hasError: boole
 // keeping the initial bundle — and first paint — small.
 const Dashboard = lazyWithRetry(() => import('./pages/Dashboard'))
 const Users = lazyWithRetry(() => import('./pages/Users'))
+const IdCards = lazyWithRetry(() => import('./pages/IdCards'))
 const Samples = lazyWithRetry(() => import('./pages/Samples'))
 const Scan = lazyWithRetry(() => import('./pages/Scan'))
 const Dispatches = lazyWithRetry(() => import('./pages/Dispatches'))
@@ -189,6 +190,16 @@ export default function App() {
             <RequirePerm perm="users.view">
               <Suspense fallback={<PageSpinner />}>
                 <Users />
+              </Suspense>
+            </RequirePerm>
+          }
+        />
+        <Route
+          path="/id-cards"
+          element={
+            <RequirePerm perm="users.view">
+              <Suspense fallback={<PageSpinner />}>
+                <IdCards />
               </Suspense>
             </RequirePerm>
           }

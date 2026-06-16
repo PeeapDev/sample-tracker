@@ -23,6 +23,53 @@ self.addEventListener('activate', (event) => {
   )
 })
 
+// --- Web Push -------------------------------------------------------------
+// A push arrives even when the app (or browser) is closed. We surface it as an
+// OS notification; clicking it focuses an open tab (deep-linking it to the
+// related sample/dispatch) or opens a new one.
+self.addEventListener('push', (event) => {
+  let data = {}
+  try {
+    data = event.data ? event.data.json() : {}
+  } catch {
+    data = { body: event.data ? event.data.text() : '' }
+  }
+  const title = data.title || 'NSRTMS'
+  const url =
+    data.url ||
+    (data.dispatchId
+      ? `/dispatches?open=${data.dispatchId}`
+      : data.sampleId
+        ? `/samples?open=${data.sampleId}`
+        : '/')
+  event.waitUntil(
+    self.registration.showNotification(title, {
+      body: data.body || '',
+      icon: '/favicon.svg',
+      badge: '/favicon.svg',
+      tag: data.type || 'nsrtms-notification',
+      data: { url },
+    }),
+  )
+})
+
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close()
+  const target = (event.notification.data && event.notification.data.url) || '/'
+  const full = new URL(target, self.location.origin).href
+  event.waitUntil(
+    self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clients) => {
+      for (const client of clients) {
+        if (client.url.startsWith(self.location.origin) && 'focus' in client) {
+          client.navigate(full).catch(() => {})
+          return client.focus()
+        }
+      }
+      if (self.clients.openWindow) return self.clients.openWindow(full)
+    }),
+  )
+})
+
 self.addEventListener('fetch', (event) => {
   const req = event.request
   if (req.method !== 'GET') return

@@ -12,6 +12,7 @@ import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { NotificationsService } from './notifications.service';
 import { PushService, SaveSubscriptionInput } from './push.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { NotificationType } from '../../database/enums';
 
 @ApiTags('Notifications')
 @Controller('notifications')
@@ -42,6 +43,20 @@ export class NotificationsController {
   async unsubscribe(@Body() body: { endpoint: string }) {
     await this.pushService.removeSubscription(body.endpoint);
     return { ok: true };
+  }
+
+  // Sends a notification to the caller so they can confirm the bell, the badge
+  // count and (if subscribed) web push all work end-to-end.
+  @Post('test')
+  @ApiOperation({ summary: 'Send a test notification to the current user' })
+  async sendTest(@Req() req) {
+    const n = await this.notificationsService.createNotification({
+      type: NotificationType.SAMPLE_REGISTERED,
+      title: 'Test notification',
+      message: 'If you can see this, notifications are working. 🎉',
+      userId: req.user.sub,
+    });
+    return { ok: true, id: n.id };
   }
 
   @Get()

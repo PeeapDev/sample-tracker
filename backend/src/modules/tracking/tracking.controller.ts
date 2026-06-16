@@ -44,4 +44,19 @@ export class TrackingController {
   async activeRiders(@Query() query: ActiveRidersQueryDto) {
     return this.trackingService.getActiveRiders(query.withinMinutes ?? 10);
   }
+
+  // Sample-centric convergence feed: every in-flight dispatch leg with its
+  // origin, destination, sample count and live position — what the map uses to
+  // draw samples converging on a hub from different facilities.
+  @Get('legs')
+  @Roles(
+    UserRole.ADMIN,
+    UserRole.DISPATCHER,
+    UserRole.HUB_OFFICER,
+    UserRole.LAB_OFFICER,
+  )
+  @ApiOperation({ summary: 'List active dispatch legs (sample convergence)' })
+  async activeLegs(@Query() query: ActiveRidersQueryDto) {
+    return this.trackingService.getActiveLegs(query.withinMinutes ?? 30);
+  }
 }

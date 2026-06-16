@@ -15,6 +15,7 @@ import { TrackingModule } from './modules/tracking/tracking.module';
 import { NotificationsModule } from './modules/notifications/notifications.module';
 import { DashboardModule } from './modules/dashboard/dashboard.module';
 import { PermissionsModule } from './modules/permissions/permissions.module';
+import { CardTemplatesModule } from './modules/card-templates/card-templates.module';
 import { SupabaseService } from './services/supabase.service';
 import databaseConfig from './config/database.config';
 import jwtConfig from './config/jwt.config';
@@ -50,6 +51,7 @@ import appConfig from './config/app.config';
     NotificationsModule,
     DashboardModule,
     PermissionsModule,
+    CardTemplatesModule,
   ],
   providers: [
     SupabaseService,
